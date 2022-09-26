@@ -29,6 +29,31 @@ pub enum Regs {
 }
 
 impl Registers {
+
+    /// Sets up register values after booting, so running the BOOT ROM is not needed.
+    /// 
+    /// `header_checksum` is `$014D` and is responsible for the Carry and Half-Carry flag.
+    pub fn new_dmg(header_checksum: u8) -> Self {
+        let flag = if header_checksum == 0x00 {
+            0b1000000
+        } else {
+            0b1011000
+        };
+
+        Self {
+            A: 0x01,
+            F: flag,
+            B: 0x00,
+            C: 0x13,
+            D: 0x00,
+            E: 0xD8,
+            H: 0x01,
+            L: 0x4D,
+            SP: 0x100,
+            PC: 0xFFFE,
+        }
+    }
+
     pub fn get_af(&self) -> u16 {
         (self.A as u16) << 8 | self.F as u16
     }

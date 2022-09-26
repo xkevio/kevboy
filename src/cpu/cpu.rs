@@ -1,5 +1,5 @@
-use crate::cpu::registers::{Registers, Regs, Flag};
 use crate::cpu::bus::Bus;
+use crate::cpu::registers::{Flag, Registers, Regs};
 
 use std::ops::{Add, Sub};
 

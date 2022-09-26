@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use eframe::{
     egui::{menu, CentralPanel, CollapsingHeader, TextEdit, TextStyle, TopBottomPanel},
     epaint::ColorImage,
@@ -96,5 +98,8 @@ impl<'a> App for Kevboy<'a> {
                     });
             });
         });
+
+        println!("{:?}", Instant::now());
+        ctx.request_repaint();
     }
 }
