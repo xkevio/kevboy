@@ -1,7 +1,5 @@
-use crate::{
-    bus::Bus,
-    registers::{Flag, Registers, Regs},
-};
+use crate::cpu::registers::{Registers, Regs, Flag};
+use crate::cpu::bus::Bus;
 
 use std::ops::{Add, Sub};
 
@@ -16,7 +14,7 @@ macro_rules! reg8 {
             5 => $self.registers.L,
             6 => $bus.read_byte($self.registers.get_hl()),
             7 => $self.registers.A,
-            _ => panic!("Invalid register!")
+            _ => panic!("Invalid register!"),
         }
     };
 }
@@ -30,17 +28,17 @@ impl CPU {
     pub fn new() -> Self {
         Self {
             registers: Registers::default(),
-            ime: true,
+            ime: false,
         }
     }
 
     // returns m-cycles for now
     #[rustfmt::skip]
     pub fn tick(&mut self, bus: &mut Bus) -> u8 {
-        let opcode = bus.read_byte(self.registers.PC);
+        let opcode = self.fetch_operand(bus);
 
         if opcode == 0xCB {
-            let cb_opcode = bus.read_byte(self.registers.PC + 1);
+            let cb_opcode = self.fetch_operand(bus);
 
             match cb_opcode {
                 0x00 => { self.registers.B = self.rlc(self.registers.B); 2 }
@@ -156,8 +154,8 @@ impl CPU {
                 }
                 0x3F => { self.registers.A = self.srl(self.registers.A); 2 }
                 0x40..=0x7F => {
-                    let bit = (cb_opcode >> 3) & 0x07;
-                    let reg = cb_opcode & 0x07;
+                    let bit = (cb_opcode >> 3) & 0b111;
+                    let reg = cb_opcode & 0b111;
 
                     match reg {
                         0 => { self.bit(bit, self.registers.B); 2 }
@@ -172,8 +170,8 @@ impl CPU {
                     }
                 }
                 0x80..=0xBF => {
-                    let bit = (cb_opcode >> 3) & 0x07;
-                    let reg = cb_opcode & 0x07;
+                    let bit = (cb_opcode >> 3) & 0b111;
+                    let reg = cb_opcode & 0b111;
 
                     match reg {
                         0 => { self.registers.B = self.res(bit, self.registers.B); 2 }
@@ -194,8 +192,8 @@ impl CPU {
                     }
                 }
                 0xC0..=0xFF => {
-                    let bit = (cb_opcode >> 3) & 0x07;
-                    let reg = cb_opcode & 0x07;
+                    let bit = (cb_opcode >> 3) & 0b111;
+                    let reg = cb_opcode & 0b111;
 
                     match reg {
                         0 => { self.registers.B = self.set(bit, self.registers.B); 2 }
@@ -220,10 +218,10 @@ impl CPU {
             match opcode {
                 0x00 => { self.nop(); 1 }
                 0x01 | 0x11 | 0x21 | 0x31 => {
-                    let reg = (opcode >> 4) & 0x03;
+                    let reg = (opcode >> 4) & 0b11;
 
-                    let low = bus.read_byte(self.registers.PC + 1);
-                    let high = bus.read_byte(self.registers.PC + 2);
+                    let low = self.fetch_operand(bus);
+                    let high = self.fetch_operand(bus);
 
                     match reg {
                         0 => { self.ld16(Regs::BC, low, high) }
@@ -236,7 +234,7 @@ impl CPU {
                     3
                 }
                 0x02 | 0x12 | 0x22 | 0x32 => {
-                    let reg = (opcode >> 4) & 0x03;
+                    let reg = (opcode >> 4) & 0b11;
 
                     match reg {
                         0 => { self.st_a(bus, self.registers.get_bc()) }
@@ -255,7 +253,7 @@ impl CPU {
                     2
                 }
                 0x03 | 0x13 | 0x23 | 0x33 => {
-                    let reg = (opcode >> 4) & 0x03;
+                    let reg = (opcode >> 4) & 0b11;
 
                     match reg {
                         0 => { self.inc16(Regs::BC) }
@@ -268,7 +266,7 @@ impl CPU {
                     2
                 }
                 0x04 | 0x14 | 0x24 | 0x34 | 0x0C | 0x1C | 0x2C | 0x3C => {
-                    let reg = (opcode >> 3) & 0x07;
+                    let reg = (opcode >> 3) & 0b111;
 
                     match reg {
                         0 => { self.registers.B = self.inc8(self.registers.B); 1 }
@@ -289,7 +287,7 @@ impl CPU {
                     }
                 }
                 0x05 | 0x15 | 0x25 | 0x35 | 0x0D | 0x1D | 0x2D | 0x3D => {
-                    let reg = (opcode >> 3) & 0x07;
+                    let reg = (opcode >> 3) & 0b111;
 
                     match reg {
                         0 => { self.registers.B = self.dec8(self.registers.B); 1 }
@@ -310,8 +308,9 @@ impl CPU {
                     }
                 }
                 0x06 | 0x16 | 0x26 | 0x36 | 0x0E | 0x1E | 0x2E | 0x3E => {
-                    let reg = (opcode >> 3) & 0x07;
-                    self.ld8(bus, reg, bus.read_byte(self.registers.PC));
+                    let reg = (opcode >> 3) & 0b111;
+                    let value = self.fetch_operand(bus);
+                    self.ld8(bus, reg, value);
 
                     // 3 cycles if LD (HL), u8
                     if reg == 6 { 3 } else { 2 }
@@ -321,10 +320,11 @@ impl CPU {
                     let address = bus.read_16(self.registers.PC);
                     bus.write_16(address, self.registers.SP);
 
+                    self.registers.PC += 2; // TODO
                     5
                 }
                 0x09 | 0x19 | 0x29 | 0x39 => {
-                    let reg = (opcode >> 4) & 0x03;
+                    let reg = (opcode >> 4) & 0b111;
 
                     match reg {
                         0 => { self.add_hl(Regs::BC) }
@@ -337,7 +337,7 @@ impl CPU {
                     2
                 }
                 0x0A | 0x1A | 0x2A | 0x3A => {
-                    let reg = (opcode >> 4) & 0x03;
+                    let reg = (opcode >> 4) & 0b111;
 
                     match reg {
                         0 => { self.ld_a(bus.read_byte(self.registers.get_bc())) }
@@ -356,7 +356,7 @@ impl CPU {
                     2
                 }
                 0x0B | 0x1B | 0x2B | 0x3B => {
-                    let reg = (opcode >> 4) & 0x03;
+                    let reg = (opcode >> 4) & 0b111;
 
                     match reg {
                         0 => { self.dec16(Regs::BC) }
@@ -371,11 +371,16 @@ impl CPU {
                 0x0F => { self.rrca(); 1 }
                 0x10 => { println!("STOP, not implemented"); 1 }
                 0x17 => { self.rla(); 1 }
-                0x18 => { self.jr(bus.read_byte(self.registers.PC + 1)); 3 }
+                0x18 => {
+                    let value = self.fetch_operand(bus);
+                    self.jr(value); 
+                    
+                    3 
+                }
                 0x1F => { self.rra(); 1 }
                 0x20 | 0x28 | 0x30 | 0x38 => {
-                    let condition = (opcode >> 3) & 0x2;
-                    let value = bus.read_byte(self.registers.PC + 1);
+                    let condition = (opcode >> 3) & 0x11;
+                    let value = self.fetch_operand(bus);
 
                     match condition {
                         0 | 1 => self.jr_flag(Flag::Zero, value, condition != 0),
@@ -388,8 +393,8 @@ impl CPU {
                 0x37 => { self.scf(); 1 }
                 0x3F => { self.ccf(); 1 }
                 0x40..=0x7F => {
-                    let dest = (opcode >> 3) & 0x3;
-                    let source = opcode & 0x3;
+                    let dest = (opcode >> 3) & 0b111;
+                    let source = opcode & 0b111;
 
                     // LD (HL), (HL) doesn't exist, 0x76 is HALT
                     if dest == 6 && source == 6 {
@@ -403,8 +408,8 @@ impl CPU {
                     }
                 }
                 0x80..=0xBF => {
-                    let reg8 = reg8!(self, opcode & 0x03, bus);
-                    let cycles = if opcode & 0x03 == 0b110 { 2 } else { 1 };
+                    let reg8 = reg8!(self, opcode & 0b111, bus);
+                    let cycles = if opcode & 0b111 == 0b110 { 2 } else { 1 };
 
                     match opcode {
                         0x80..=0x87 => { self.add_a(reg8); cycles }
@@ -419,7 +424,7 @@ impl CPU {
                     }
                 }
                 0xC0 | 0xC8 | 0xD0 | 0xD8 => {
-                    let condition = (opcode >> 3) & 0x2;
+                    let condition = (opcode >> 3) & 0b11;
 
                     match condition {
                         0 | 1 => self.ret_flag(bus, Flag::Zero, condition != 0),
@@ -432,8 +437,10 @@ impl CPU {
                 0xE1 => { self.pop(Regs::HL, bus); 3 }
                 0xF1 => { self.pop(Regs::AF, bus); 3 }
                 0xC2 | 0xCA | 0xD2 | 0xDA => {
-                    let condition = (opcode >> 3) & 0x2;
-                    let value = bus.read_16(self.registers.PC + 1);
+                    let condition = (opcode >> 3) & 0b11;
+                    let value = bus.read_16(self.registers.PC);
+
+                    self.registers.PC += 2; // TODO
 
                     match condition {
                         0 | 1 => self.jp_flag(Flag::Zero, value, condition != 0),
@@ -441,10 +448,17 @@ impl CPU {
                         _ => panic!("Invalid condition!")
                     }
                 }
-                0xC3 => { self.jp(bus.read_16(self.registers.PC + 1)); 4 }
+                0xC3 => { 
+                    self.jp(bus.read_16(self.registers.PC)); 
+                    self.registers.PC += 2; // TODO
+
+                    4 
+                }
                 0xC4 | 0xCC | 0xD4 | 0xDC => {
-                    let condition = (opcode >> 3) & 0x2;
-                    let value = bus.read_16(self.registers.PC + 1);
+                    let condition = (opcode >> 3) & 0b11;
+                    let value = bus.read_16(self.registers.PC);
+
+                    self.registers.PC += 2; // TODO
 
                     match condition {
                         0 | 1 => self.call_flag(bus, Flag::Zero, value, condition != 0),
@@ -456,16 +470,25 @@ impl CPU {
                 0xD5 => { self.push(Regs::DE, bus); 4 }
                 0xE5 => { self.push(Regs::HL, bus); 4 }
                 0xF5 => { self.push(Regs::AF, bus); 4 }
-                0xC6 => { self.add_a(bus.read_byte(self.registers.PC + 1)); 2 }
-                0xCE => { self.adc_a(bus.read_byte(self.registers.PC + 1)); 2 }
-                0xD6 => { self.sub_a(bus.read_byte(self.registers.PC + 1)); 2 }
-                0xDE => { self.sbc_a(bus.read_byte(self.registers.PC + 1)); 2 }
-                0xE6 => { self.and_a(bus.read_byte(self.registers.PC + 1)); 2 }
-                0xEE => { self.xor_a(bus.read_byte(self.registers.PC + 1)); 2 }
-                0xF6 => { self.or_a(bus.read_byte(self.registers.PC + 1)); 2 }
-                0xFE => { self.cp_a(bus.read_byte(self.registers.PC + 1)); 2 }
+                0xC6 | 0xCE | 0xD6 | 0xDE | 0xE6 | 0xEE | 0xF6 | 0xFE => {
+                    let value = self.fetch_operand(bus);
+
+                    match opcode {
+                        0xC6 => self.add_a(value),
+                        0xCE => self.adc_a(value),
+                        0xD6 => self.sub_a(value),
+                        0xDE => self.sbc_a(value),
+                        0xE6 => self.and_a(value),
+                        0xEE => self.xor_a(value),
+                        0xF6 => self.or_a(value),
+                        0xFE => self.cp_a(value),
+                        _ => panic!("Invalid instruction!")
+                    }
+
+                    2
+                }
                 0xC7 | 0xD7 | 0xE7 | 0xF7 | 0xCF | 0xDF | 0xEF | 0xFF => {
-                    let rst_vec = (opcode >> 3) & 0x03;
+                    let rst_vec = (opcode >> 3) & 0b111;
                     self.rst(bus, rst_vec);
 
                     4
@@ -473,13 +496,13 @@ impl CPU {
                 0xC9 => { self.ret(bus); 4 }
                 0xD9 => { self.reti(bus); 4 }
                 0xE0 => {
-                    let address = 0xFF00 + (bus.read_byte(self.registers.PC + 1) as u16);
+                    let address = 0xFF00 + (self.fetch_operand(bus) as u16);
                     bus.write_byte(address, self.registers.A);
 
                     3
                 }
                 0xF0 => {
-                    let address = 0xFF00 + (bus.read_byte(self.registers.PC + 1) as u16);
+                    let address = 0xFF00 + (self.fetch_operand(bus) as u16);
                     self.registers.A = bus.read_byte(address);
 
                     3
@@ -499,29 +522,52 @@ impl CPU {
                 0xF3 => { self.di(); 1 }
                 0xFB => { self.ei(); 1 }
                 0xE8 => {
-                    // wrapping_add
-                    let signed_operand = bus.read_byte(self.registers.PC + 1).wrapping_neg() as u16;
-                    
-                    if self._check_if_half_carry_16(self.registers.SP, signed_operand, Add::add) {
-                        self.registers.set_flag(Flag::HalfCarry);
-                    } else {
-                        self.registers.unset_flag(Flag::HalfCarry);
-                    }
-
-                    let (result, cy) = self.registers.SP.overflowing_add(signed_operand);
-                    self.registers.SP = result;
-
-                    if cy {
-                        self.registers.set_flag(Flag::Carry);
-                    } else {
-                        self.registers.unset_flag(Flag::Carry);
-                    }
+                    // wrapping_add, adding unsigned to signed
+                    let value = self.fetch_operand(bus);
+                    self.add_sp(value);
 
                     4
                 }
-                _ => { todo!() }
+                0xE9 => { self.jp_hl(); 1 }
+                0xEA => {
+                    let address = bus.read_16(self.registers.PC);
+                    bus.write_byte(address, self.registers.A);
+
+                    self.registers.PC += 2; // TODO
+
+                    4
+                }
+                0xFA => {
+                    let address = bus.read_16(self.registers.PC);
+                    self.registers.A = bus.read_byte(address);
+
+                    self.registers.PC += 2; // TODO
+
+                    4
+                }
+                0xF8 => {
+                    let old_sp = self.registers.SP;
+                    let value = self.fetch_operand(bus);
+
+                    self.add_sp(value);
+
+                    self.registers.set_hl(self.registers.SP);
+                    self.registers.SP = old_sp;
+
+                    3
+                }
+                _ => { panic!("Illegal or invalid opcode: {:#04X}", opcode) }
             }
         }
+
+    }
+
+    /// Read next operand at PC and increase PC after.
+    fn fetch_operand(&mut self, bus: &Bus) -> u8 {
+        let operand = bus.read_byte(self.registers.PC);
+        self.registers.PC += 1;
+
+        operand
     }
 
     fn rlc(&mut self, reg8: u8) -> u8 {
@@ -723,6 +769,25 @@ impl CPU {
 
     fn st_a(&mut self, bus: &mut Bus, value: u16) {
         bus.write_byte(value, self.registers.A);
+    }
+
+    fn add_sp(&mut self, value: u8) {
+        let signed_operand = value.wrapping_neg() as u16;
+
+        if self._check_if_half_carry_16(self.registers.SP, signed_operand, u16::wrapping_add) {
+            self.registers.set_flag(Flag::HalfCarry);
+        } else {
+            self.registers.unset_flag(Flag::HalfCarry);
+        }
+
+        let (result, cy) = self.registers.SP.overflowing_add(signed_operand);
+        self.registers.SP = result;
+
+        if cy {
+            self.registers.set_flag(Flag::Carry);
+        } else {
+            self.registers.unset_flag(Flag::Carry);
+        }
     }
 
     /// Load 2 bytes of data into `reg16`.
@@ -1041,7 +1106,8 @@ impl CPU {
     }
 
     fn jr(&mut self, value: u8) {
-        self.registers.PC += value as u16;
+        let value = value.wrapping_neg();
+        self.registers.PC += self.registers.PC.wrapping_add(value as u16);
     }
 
     fn jp_hl(&mut self) {
@@ -1084,11 +1150,11 @@ impl CPU {
     /// Only for `Zero` and `Carry` flag.
     ///
     /// Maps to `jr nz`, `jr nc`, `jr z` and `jr c`.  
-    /// 
+    ///
     /// Returns the m-cycles it took depending on the condition
     fn jr_flag(&mut self, flag: Flag, value: u8, condition: bool) -> u8 {
         if self.registers.get_flag(flag) == condition {
-            self.registers.PC += value as u16;
+            self.jr(value);
             return 3;
         }
 

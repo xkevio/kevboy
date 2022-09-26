@@ -1,13 +1,9 @@
 #![allow(dead_code)] // TODO
 
 use eframe::epaint::Vec2;
-use ui::Kevboy;
+use ui::ui::Kevboy;
 
-mod bus;
 mod cpu;
-mod memory_viewer;
-mod opcode;
-mod registers;
 mod ui;
 
 const WIDTH: usize = 160;

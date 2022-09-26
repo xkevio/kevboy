@@ -7,7 +7,7 @@ use egui_extras::RetainedImage;
 
 use crate::HEIGHT;
 use crate::WIDTH;
-use crate::{memory_viewer::MemoryViewer, BOOT_ROM};
+use crate::{ui::memory_viewer::MemoryViewer, BOOT_ROM};
 
 pub struct Kevboy<'a>(MemoryViewer<'a>);
 
