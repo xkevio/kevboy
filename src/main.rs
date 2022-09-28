@@ -4,12 +4,14 @@ use eframe::epaint::Vec2;
 use ui::ui::Kevboy;
 
 mod cpu;
+mod emulator;
+mod mmu;
 mod ui;
 
 const WIDTH: usize = 160;
 const HEIGHT: usize = 144;
 
-const BOOT_ROM: &[u8; 1048576] = include_bytes!("red_test.gb");
+const BOOT_ROM: &[u8; 32768] = include_bytes!("01-special.gb");
 
 fn main() {
     let native_options = eframe::NativeOptions {

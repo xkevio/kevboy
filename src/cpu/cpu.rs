@@ -1,5 +1,4 @@
-use crate::cpu::bus::Bus;
-use crate::cpu::registers::{Flag, Registers, Regs};
+use crate::{cpu::registers::{Flag, Registers, Regs}, mmu::bus::Bus};
 
 use std::ops::{Add, Sub};
 
@@ -20,15 +19,19 @@ macro_rules! reg8 {
 }
 
 pub struct CPU {
-    registers: Registers,
-    ime: bool,
+    pub registers: Registers,
+    pub ime: bool,
+    pub halt: bool,
+    pub stopped: bool,
 }
 
 impl CPU {
     pub fn new() -> Self {
         Self {
-            registers: Registers::default(),
+            registers: Registers::new_dmg(0x66),
             ime: false,
+            halt: false,
+            stopped: false,
         }
     }
 
@@ -36,6 +39,7 @@ impl CPU {
     #[rustfmt::skip]
     pub fn tick(&mut self, bus: &mut Bus) -> u8 {
         let opcode = self.fetch_operand(bus);
+        // println!("CURRENT PC: {:#08X} executing {:#04X}", self.registers.PC - 1, opcode);
 
         if opcode == 0xCB {
             let cb_opcode = self.fetch_operand(bus);
@@ -369,7 +373,7 @@ impl CPU {
                     2
                 }
                 0x0F => { self.rrca(); 1 }
-                0x10 => { println!("STOP, not implemented"); 1 }
+                0x10 => { println!("STOP, not implemented"); bus.timer.div = 0;  1 } // TODO
                 0x17 => { self.rla(); 1 }
                 0x18 => {
                     let value = self.fetch_operand(bus);
@@ -450,8 +454,6 @@ impl CPU {
                 }
                 0xC3 => { 
                     self.jp(bus.read_16(self.registers.PC)); 
-                    self.registers.PC += 2; // TODO
-
                     4 
                 }
                 0xC4 | 0xCC | 0xD4 | 0xDC => {
@@ -565,7 +567,12 @@ impl CPU {
     /// Read next operand at PC and increase PC after.
     fn fetch_operand(&mut self, bus: &Bus) -> u8 {
         let operand = bus.read_byte(self.registers.PC);
+
+        // println!("PC: {:#08X} executing {:#04X}", self.registers.PC, operand);
+
         self.registers.PC += 1;
+
+        // println!("PC: {:#08X} after increase by one", self.registers.PC);
 
         operand
     }
@@ -825,7 +832,7 @@ impl CPU {
 
         self.registers.unset_flag(Flag::Substraction);
 
-        if self._check_if_half_carry(value - 1, value, Add::add) {
+        if self._check_if_half_carry(value - 1, 1, Add::add) {
             self.registers.set_flag(Flag::HalfCarry);
         }
 
@@ -841,7 +848,7 @@ impl CPU {
 
         self.registers.set_flag(Flag::Substraction);
 
-        if self._check_if_half_carry(value + 1, value, Sub::sub) {
+        if self._check_if_half_carry(value + 1, 1, Sub::sub) {
             self.registers.set_flag(Flag::HalfCarry);
         }
 
@@ -1106,8 +1113,14 @@ impl CPU {
     }
 
     fn jr(&mut self, value: u8) {
-        let value = value.wrapping_neg();
-        self.registers.PC += self.registers.PC.wrapping_add(value as u16);
+        let value = value.wrapping_neg() as i8 * (-1);
+        dbg!(value);
+
+        if value > 0 {
+            self.registers.PC -= value as u16;
+        } else {
+            self.registers.PC += value as u16;
+        }
     }
 
     fn jp_hl(&mut self) {
@@ -1115,7 +1128,7 @@ impl CPU {
     }
 
     fn nop(&mut self) {
-        self.registers.PC += 1;
+        // self.registers.PC += 1;
     }
 
     fn rlca(&mut self) {

@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Instant, Duration};
 
 use eframe::{
     egui::{menu, CentralPanel, CollapsingHeader, TextEdit, TextStyle, TopBottomPanel},
@@ -7,15 +7,23 @@ use eframe::{
 };
 use egui_extras::RetainedImage;
 
-use crate::HEIGHT;
+use crate::{HEIGHT, emulator::Emulator};
 use crate::WIDTH;
 use crate::{ui::memory_viewer::MemoryViewer, BOOT_ROM};
 
-pub struct Kevboy<'a>(MemoryViewer<'a>);
+pub struct Kevboy<'a> {
+    emulator: Emulator,
+    cy_count: u16,
+    mem_viewer: MemoryViewer<'a>,
+}
 
 impl<'a> Default for Kevboy<'a> {
     fn default() -> Self {
-        Self(MemoryViewer::new(BOOT_ROM, false))
+        Self { 
+            emulator: Emulator::new(BOOT_ROM),
+            cy_count: 0,
+            mem_viewer: MemoryViewer::new(BOOT_ROM, false),
+        }
     }
 }
 
@@ -94,12 +102,24 @@ impl<'a> App for Kevboy<'a> {
                 CollapsingHeader::new("Memory")
                     .default_open(true)
                     .show(ui, |ui| {
-                        self.0.show(ui);
+                        self.mem_viewer.show(ui);
                     });
             });
         });
 
-        println!("{:?}", Instant::now());
+        // println!("{:?}", Instant::now());
+        if self.cy_count < 17_476 {
+            self.cy_count += self.emulator.step() as u16;
+        } else {
+            let start = Instant::now();
+
+            while start.elapsed() < Duration::from_micros(16667) {
+                // do nothing
+            }
+
+            self.cy_count = 0;
+        }
+
         ctx.request_repaint();
     }
 }
