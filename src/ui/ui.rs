@@ -108,17 +108,18 @@ impl<'a> App for Kevboy<'a> {
         });
 
         // println!("{:?}", Instant::now());
-        if self.cy_count < 17_476 {
-            self.cy_count += self.emulator.step() as u16;
-        } else {
-            let start = Instant::now();
+        // if self.cy_count < 17_476 {
+        //     self.cy_count += self.emulator.step() as u16;
+        // } else {
+        //     let start = Instant::now();
 
-            while start.elapsed() < Duration::from_micros(16667) {
-                // do nothing
-            }
+        //     while start.elapsed() < Duration::from_micros(16667) {
+        //         // do nothing
+        //     }
 
-            self.cy_count = 0;
-        }
+        //     self.cy_count = 0;
+        // }
+        self.emulator.step();
 
         ctx.request_repaint();
     }

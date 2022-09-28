@@ -1,4 +1,4 @@
-use crate::{cpu::registers::{Flag, Registers, Regs}, mmu::bus::Bus};
+use crate::{cpu::{registers::{Flag, Registers, Regs}, opcode::INSTRUCTIONS}, mmu::bus::Bus};
 
 use std::ops::{Add, Sub};
 
@@ -39,7 +39,7 @@ impl CPU {
     #[rustfmt::skip]
     pub fn tick(&mut self, bus: &mut Bus) -> u8 {
         let opcode = self.fetch_operand(bus);
-        // println!("CURRENT PC: {:#08X} executing {:#04X}", self.registers.PC - 1, opcode);
+        // println!("CURRENT PC: {:#08X} executing {:#04X}: {}", self.registers.PC - 1, opcode, INSTRUCTIONS[opcode as usize].name);
 
         if opcode == 0xCB {
             let cb_opcode = self.fetch_operand(bus);
@@ -496,6 +496,14 @@ impl CPU {
                     4
                 }
                 0xC9 => { self.ret(bus); 4 }
+                0xCD => { 
+                    let address = bus.read_16(self.registers.PC);
+
+                    self.registers.PC += 2;
+                    self.call(bus, address);
+
+                    6
+                }
                 0xD9 => { self.reti(bus); 4 }
                 0xE0 => {
                     let address = 0xFF00 + (self.fetch_operand(bus) as u16);
@@ -828,6 +836,8 @@ impl CPU {
 
         if value == 0 {
             self.registers.set_flag(Flag::Zero);
+        } else {
+            self.registers.unset_flag(Flag::Zero);
         }
 
         self.registers.unset_flag(Flag::Substraction);
@@ -1114,7 +1124,7 @@ impl CPU {
 
     fn jr(&mut self, value: u8) {
         let value = value.wrapping_neg() as i8 * (-1);
-        dbg!(value);
+        // dbg!(value);
 
         if value > 0 {
             self.registers.PC -= value as u16;
