@@ -56,7 +56,7 @@ impl Bus {
                 self.memory[address as usize] = byte;
             }
             0xC000..=0xDFFF => {
-                // println!("WRAM access to {:#08X}", address);
+                println!("WRAM access to {:#08X}", address);
                 self.memory[address as usize] = byte;
             }
             0xE000..=0xFDFF => println!("Echo RAM, ignore write"),

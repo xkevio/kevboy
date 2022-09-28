@@ -596,6 +596,8 @@ impl CPU {
 
         if reg8 == 0 {
             self.registers.set_flag(Flag::Zero);
+        } else {
+            self.registers.unset_flag(Flag::Zero);
         }
 
         self.registers.unset_flag(Flag::Substraction);
@@ -615,6 +617,8 @@ impl CPU {
 
         if reg8 == 0 {
             self.registers.set_flag(Flag::Zero);
+        } else {
+            self.registers.unset_flag(Flag::Zero);
         }
 
         self.registers.unset_flag(Flag::Substraction);
@@ -634,6 +638,8 @@ impl CPU {
 
         if reg8 == 0 {
             self.registers.set_flag(Flag::Zero);
+        } else {
+            self.registers.unset_flag(Flag::Zero);
         }
 
         self.registers.unset_flag(Flag::Substraction);
@@ -653,6 +659,8 @@ impl CPU {
 
         if reg8 == 0 {
             self.registers.set_flag(Flag::Zero);
+        } else {
+            self.registers.unset_flag(Flag::Zero);
         }
 
         self.registers.unset_flag(Flag::Substraction);
@@ -674,6 +682,8 @@ impl CPU {
 
         if reg8 == 0 {
             self.registers.set_flag(Flag::Zero);
+        } else {
+            self.registers.unset_flag(Flag::Zero);
         }
 
         self.registers.unset_flag(Flag::Substraction);
@@ -693,6 +703,8 @@ impl CPU {
 
         if reg8 == 0 {
             self.registers.set_flag(Flag::Zero);
+        } else {
+            self.registers.unset_flag(Flag::Zero);
         }
 
         self.registers.unset_flag(Flag::Substraction);
@@ -707,6 +719,8 @@ impl CPU {
 
         if reg8 == 0 {
             self.registers.set_flag(Flag::Zero);
+        } else {
+            self.registers.unset_flag(Flag::Zero);
         }
 
         self.registers.unset_flag(Flag::Substraction);
@@ -729,6 +743,8 @@ impl CPU {
 
         if reg8 == 0 {
             self.registers.set_flag(Flag::Zero);
+        } else {
+            self.registers.unset_flag(Flag::Zero);
         }
 
         self.registers.unset_flag(Flag::Substraction);
@@ -854,6 +870,8 @@ impl CPU {
 
         if value == 0 {
             self.registers.set_flag(Flag::Zero);
+        } else {
+            self.registers.unset_flag(Flag::Zero);
         }
 
         self.registers.set_flag(Flag::Substraction);
@@ -978,10 +996,14 @@ impl CPU {
 
         if self.registers.A == 0 {
             self.registers.set_flag(Flag::Zero);
+        } else {
+            self.registers.unset_flag(Flag::Zero);
         }
 
         if carry {
             self.registers.set_flag(Flag::Carry);
+        } else {
+            self.registers.unset_flag(Flag::Carry);
         }
 
         self.registers.unset_flag(Flag::Substraction);
@@ -999,10 +1021,14 @@ impl CPU {
 
         if self.registers.A == 0 {
             self.registers.set_flag(Flag::Zero);
+        } else {
+            self.registers.unset_flag(Flag::Zero);
         }
 
         if carry {
             self.registers.set_flag(Flag::Carry);
+        } else {
+            self.registers.unset_flag(Flag::Carry);
         }
 
         self.registers.unset_flag(Flag::Substraction);
@@ -1018,10 +1044,14 @@ impl CPU {
 
         if self.registers.A == 0 {
             self.registers.set_flag(Flag::Zero);
+        } else {
+            self.registers.unset_flag(Flag::Zero);
         }
 
         if carry {
             self.registers.set_flag(Flag::Carry);
+        } else {
+            self.registers.unset_flag(Flag::Carry);
         }
 
         self.registers.set_flag(Flag::Substraction);
@@ -1039,10 +1069,14 @@ impl CPU {
 
         if self.registers.A == 0 {
             self.registers.set_flag(Flag::Zero);
+        } else {
+            self.registers.unset_flag(Flag::Zero);
         }
 
         if carry {
             self.registers.set_flag(Flag::Carry);
+        } else {
+            self.registers.unset_flag(Flag::Carry);
         }
 
         self.registers.set_flag(Flag::Substraction);
@@ -1053,6 +1087,8 @@ impl CPU {
 
         if self.registers.A == 0 {
             self.registers.set_flag(Flag::Zero);
+        } else {
+            self.registers.unset_flag(Flag::Zero);
         }
 
         self.registers.unset_flag(Flag::Substraction);
@@ -1065,6 +1101,8 @@ impl CPU {
 
         if self.registers.A == 0 {
             self.registers.set_flag(Flag::Zero);
+        } else {
+            self.registers.unset_flag(Flag::Zero);
         }
 
         self.registers.unset_flag(Flag::Substraction);
@@ -1077,6 +1115,8 @@ impl CPU {
 
         if self.registers.A == 0 {
             self.registers.set_flag(Flag::Zero);
+        } else {
+            self.registers.unset_flag(Flag::Zero);
         }
 
         self.registers.unset_flag(Flag::Substraction);
@@ -1094,10 +1134,14 @@ impl CPU {
         // A and value are equal
         if result == 0 {
             self.registers.set_flag(Flag::Zero);
+        } else {
+            self.registers.unset_flag(Flag::Zero);
         }
 
         if carry {
             self.registers.set_flag(Flag::Carry);
+        } else {
+            self.registers.unset_flag(Flag::Carry);
         }
 
         self.registers.set_flag(Flag::Substraction);
@@ -1235,6 +1279,8 @@ impl CPU {
 
         if self.registers.A == 0 {
             self.registers.set_flag(Flag::Zero);
+        } else {
+            self.registers.unset_flag(Flag::Zero);
         }
 
         self.registers.unset_flag(Flag::HalfCarry);
