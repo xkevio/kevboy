@@ -1,4 +1,4 @@
-use crate::{cpu::{registers::{Flag, Registers, Regs}, opcode::INSTRUCTIONS}, mmu::bus::Bus};
+use crate::{cpu::{registers::{Flag, Registers, Regs}, opcode::{INSTRUCTIONS, CB_INSTRUCTIONS}}, mmu::bus::Bus};
 
 use std::ops::{Add, Sub};
 
@@ -39,7 +39,21 @@ impl CPU {
     #[rustfmt::skip]
     pub fn tick(&mut self, bus: &mut Bus) -> u8 {
         let opcode = self.fetch_operand(bus);
-        // println!("CURRENT PC: {:#08X} executing {:#04X}: {}", self.registers.PC - 1, opcode, INSTRUCTIONS[opcode as usize].name);
+
+        // let print_value = if INSTRUCTIONS[opcode as usize].bytes == 2 {
+        //     bus.read_byte(self.registers.PC) as u16
+        // } else if INSTRUCTIONS[opcode as usize].bytes == 3 {
+        //     bus.read_16(self.registers.PC)
+        // } else {
+        //     0
+        // };
+
+        // if opcode != 0xCB {
+        //     println!("{:#08X}: {:#04X}      {} {:#06X}", self.registers.PC - 1, opcode, INSTRUCTIONS[opcode as usize].name, print_value);
+        // } else {
+        //     let cb_opcode = bus.read_byte(self.registers.PC);
+        //     println!("{:#08X}: {:#04X}      {}", self.registers.PC - 1, cb_opcode, CB_INSTRUCTIONS[cb_opcode as usize].name);
+        // }
 
         if opcode == 0xCB {
             let cb_opcode = self.fetch_operand(bus);
@@ -407,8 +421,17 @@ impl CPU {
                     }
 
                     match source {
-                        6 => { self.ld8(bus, dest, reg8!(self, source, bus)); 2 }
-                        _ => { self.ld8(bus, dest, reg8!(self, source, bus)); 1 }
+                        0b110 => { self.ld8(bus, dest, reg8!(self, source, bus)); 2 }
+                        _ => { 
+                            self.ld8(bus, dest, reg8!(self, source, bus));
+                            
+                            // (HL)
+                            if dest == 0b110 {
+                                2
+                            } else {
+                                1
+                            }
+                        }
                     }
                 }
                 0x80..=0xBF => {
@@ -453,7 +476,7 @@ impl CPU {
                     }
                 }
                 0xC3 => { 
-                    self.jp(bus.read_16(self.registers.PC)); 
+                    self.jp(bus.read_16(self.registers.PC));
                     4 
                 }
                 0xC4 | 0xCC | 0xD4 | 0xDC => {
@@ -566,6 +589,7 @@ impl CPU {
 
                     3
                 }
+                0xF9 => { self.registers.SP = self.registers.get_hl(); 2 }
                 _ => { panic!("Illegal or invalid opcode: {:#04X}", opcode) }
             }
         }
@@ -575,6 +599,8 @@ impl CPU {
     /// Read next operand at PC and increase PC after.
     fn fetch_operand(&mut self, bus: &Bus) -> u8 {
         let operand = bus.read_byte(self.registers.PC);
+
+        // print!(" {:#04X} ", operand);
 
         // println!("PC: {:#08X} executing {:#04X}", self.registers.PC, operand);
 
@@ -586,13 +612,13 @@ impl CPU {
     }
 
     fn rlc(&mut self, reg8: u8) -> u8 {
-        let reg8 = reg8.rotate_left(1);
-
-        if reg8 & 1 == 0 {
+        if reg8 & (1 << 7) == 0 {
             self.registers.unset_flag(Flag::Carry);
         } else {
             self.registers.set_flag(Flag::Carry);
         }
+
+        let reg8 = reg8.rotate_left(1);
 
         if reg8 == 0 {
             self.registers.set_flag(Flag::Zero);
@@ -607,13 +633,13 @@ impl CPU {
     }
 
     fn rrc(&mut self, reg8: u8) -> u8 {
-        let reg8 = reg8.rotate_right(1);
-
-        if reg8 & (1 << 7) == 0 {
+        if reg8 & 0b1 == 0 {
             self.registers.unset_flag(Flag::Carry);
         } else {
             self.registers.set_flag(Flag::Carry);
         }
+
+        let reg8 = reg8.rotate_right(1);
 
         if reg8 == 0 {
             self.registers.set_flag(Flag::Zero);
@@ -628,12 +654,19 @@ impl CPU {
     }
 
     fn rl(&mut self, reg8: u8) -> u8 {
-        let mut reg8 = reg8.rotate_left(1);
+        let bit7 = reg8 & (1 << 7);
+        let mut reg8 = reg8 << 1;
 
         if self.registers.get_flag(Flag::Carry) {
             reg8 |= 1;
         } else {
             reg8 &= !(1);
+        }
+
+        if bit7 != 0 {
+            self.registers.set_flag(Flag::Carry);
+        } else {
+            self.registers.unset_flag(Flag::Carry);
         }
 
         if reg8 == 0 {
@@ -649,12 +682,19 @@ impl CPU {
     }
 
     fn rr(&mut self, reg8: u8) -> u8 {
-        let mut reg8 = reg8.rotate_right(1);
+        let bit0 = reg8 & 0b1;
+        let mut reg8 = reg8 >> 1;
 
         if self.registers.get_flag(Flag::Carry) {
             reg8 |= 1 << 7;
         } else {
             reg8 &= !(1 << 7);
+        }
+
+        if bit0 != 0 {
+            self.registers.set_flag(Flag::Carry);
+        } else {
+            self.registers.unset_flag(Flag::Carry);
         }
 
         if reg8 == 0 {
@@ -670,14 +710,13 @@ impl CPU {
     }
 
     fn sla(&mut self, reg8: u8) -> u8 {
-        let mut reg8 = reg8.rotate_left(1);
-
-        if reg8 & 1 != 0 {
+        if reg8 & (1 << 7) != 0 {
             self.registers.set_flag(Flag::Carry);
         } else {
             self.registers.unset_flag(Flag::Carry);
         }
 
+        let mut reg8 = reg8 << 1;
         reg8 &= !(1);
 
         if reg8 == 0 {
@@ -693,13 +732,13 @@ impl CPU {
     }
 
     fn sra(&mut self, reg8: u8) -> u8 {
-        let reg8 = reg8.rotate_right(1);
-
-        if reg8 & (1 << 7) != 0 {
+        if reg8 & 0b1 != 0 {
             self.registers.set_flag(Flag::Carry);
         } else {
             self.registers.unset_flag(Flag::Carry);
         }
+
+        let reg8 = reg8 >> 1;
 
         if reg8 == 0 {
             self.registers.set_flag(Flag::Zero);
@@ -731,15 +770,14 @@ impl CPU {
     }
 
     fn srl(&mut self, reg8: u8) -> u8 {
-        let mut reg8 = reg8.rotate_right(1);
-
-        if reg8 & (1 << 7) != 0 {
+        if reg8 & 0b1 != 0 {
             self.registers.set_flag(Flag::Carry);
         } else {
             self.registers.unset_flag(Flag::Carry);
         }
 
-        reg8 &= !(1);
+        let mut reg8 = reg8 >> 1;
+        reg8 &= !(1 << 7);
 
         if reg8 == 0 {
             self.registers.set_flag(Flag::Zero);
@@ -861,6 +899,9 @@ impl CPU {
         if self._check_if_half_carry(value - 1, 1, Add::add) {
             self.registers.set_flag(Flag::HalfCarry);
         }
+
+        // println!("New value after increasing by one: {:#04X}", value);
+        // println!("Zero flag: {}", self.registers.get_flag(Flag::Zero));
 
         value
     }
@@ -1112,6 +1153,7 @@ impl CPU {
 
     fn or_a(&mut self, value: u8) {
         self.registers.A |= value;
+        // println!("Register A after ORING with {:#04X}: {:#04X}", value, self.registers.A);
 
         if self.registers.A == 0 {
             self.registers.set_flag(Flag::Zero);
@@ -1166,15 +1208,14 @@ impl CPU {
         self.registers.unset_flag(Flag::HalfCarry);
     }
 
-    fn jr(&mut self, value: u8) {
+    fn jr(&mut self, value: u8) { // FIXME:
+        // println!("value as u8: {:#04X}", value);
+
         let value = value.wrapping_neg() as i8 * (-1);
         // dbg!(value);
+        // dbg!(value as u16);
 
-        if value > 0 {
-            self.registers.PC -= value as u16;
-        } else {
-            self.registers.PC += value as u16;
-        }
+        self.registers.PC = self.registers.PC.wrapping_add(value as u16);
     }
 
     fn jp_hl(&mut self) {
@@ -1186,13 +1227,13 @@ impl CPU {
     }
 
     fn rlca(&mut self) {
-        self.registers.A = self.registers.A.rotate_left(1);
-
-        if self.registers.A & 1 == 0 {
+        if self.registers.A & (1 << 7) == 0 {
             self.registers.unset_flag(Flag::Carry);
         } else {
             self.registers.set_flag(Flag::Carry);
         }
+
+        self.registers.A = self.registers.A.rotate_left(1);
 
         self.registers.unset_flag(Flag::Zero);
         self.registers.unset_flag(Flag::Substraction);
@@ -1200,12 +1241,19 @@ impl CPU {
     }
 
     fn rla(&mut self) {
-        self.registers.A = self.registers.A.rotate_left(1);
+        let bit7 = self.registers.A & (1 << 7);
+        self.registers.A = self.registers.A << 1;
 
         if self.registers.get_flag(Flag::Carry) {
             self.registers.A |= 1;
         } else {
             self.registers.A &= !(1);
+        }
+
+        if bit7 != 0 {
+            self.registers.set_flag(Flag::Carry);
+        } else {
+            self.registers.unset_flag(Flag::Carry);
         }
 
         self.registers.unset_flag(Flag::Zero);
@@ -1229,13 +1277,13 @@ impl CPU {
     }
 
     fn rrca(&mut self) {
-        self.registers.A = self.registers.A.rotate_right(1);
-
-        if self.registers.A & (1 << 7) == 0 {
+        if self.registers.A & 0b1 == 0 {
             self.registers.unset_flag(Flag::Carry);
         } else {
             self.registers.set_flag(Flag::Carry);
         }
+
+        self.registers.A = self.registers.A.rotate_right(1);
 
         self.registers.unset_flag(Flag::Zero);
         self.registers.unset_flag(Flag::Substraction);
@@ -1243,12 +1291,19 @@ impl CPU {
     }
 
     fn rra(&mut self) {
-        self.registers.A = self.registers.A.rotate_right(1);
+        let bit0 = self.registers.A & 0b1;
+        self.registers.A = self.registers.A >> 1;
 
         if self.registers.get_flag(Flag::Carry) {
             self.registers.A |= 1 << 7;
         } else {
             self.registers.A &= !(1 << 7);
+        }
+
+        if bit0 != 0 {
+            self.registers.set_flag(Flag::Carry);
+        } else {
+            self.registers.unset_flag(Flag::Carry);
         }
 
         self.registers.unset_flag(Flag::Zero);
@@ -1272,7 +1327,7 @@ impl CPU {
                 self.registers.A += 0x60;
                 self.registers.set_flag(Flag::Carry);
             }
-            if self.registers.get_flag(Flag::HalfCarry) || self.registers.A & 0x0F > 0x09 {
+            if self.registers.get_flag(Flag::HalfCarry) || (self.registers.A & 0x0F) > 0x09 {
                 self.registers.A += 0x6;
             }
         }
@@ -1287,6 +1342,7 @@ impl CPU {
     }
 
     fn jp(&mut self, value: u16) {
+        // println!("JUMPING TO: {:#06X}", value);
         self.registers.PC = value;
     }
 
@@ -1322,6 +1378,9 @@ impl CPU {
                 self.registers.F = bus.read_byte(self.registers.SP);
                 self.registers.SP += 1;
                 self.registers.A = bus.read_byte(self.registers.SP);
+
+                // clear out lower nibble since it should always be zero
+                self.registers.F &= !(1 | 1 << 1 | 1 << 2 | 1 << 3)
             }
             _ => {}
         }
@@ -1365,9 +1424,11 @@ impl CPU {
 
     fn call(&mut self, bus: &mut Bus, value: u16) {
         self.registers.SP -= 1;
-        bus.write_byte(self.registers.SP, ((self.registers.PC) >> 8 & 0xFF00) as u8);
+        bus.write_byte(self.registers.SP, ((self.registers.PC) >> 8) as u8);
         self.registers.SP -= 1;
         bus.write_byte(self.registers.SP, self.registers.PC as u8);
+
+        // println!("SP: {:#08X}", bus.read_16(self.registers.SP));
 
         self.registers.PC = value;
     }

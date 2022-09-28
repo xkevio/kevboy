@@ -30,7 +30,7 @@ impl Emulator {
                 if let Some(interr) = interrupt {
                     if interrupts::is_interrupt_requested(if_flag, &interr) {
                         self.cpu.registers.SP -= 1;
-                        self.bus.write_byte(self.cpu.registers.SP, ((self.cpu.registers.PC) >> 8 & 0xFF00) as u8);
+                        self.bus.write_byte(self.cpu.registers.SP, (self.cpu.registers.PC >> 8) as u8);
                         self.cpu.registers.SP -= 1;
                         self.bus.write_byte(self.cpu.registers.SP, self.cpu.registers.PC as u8);
 
@@ -46,8 +46,6 @@ impl Emulator {
 
         let cycles = self.cpu.tick(&mut self.bus);
         self.bus.tick(self.cycle_count);
-
-        // print!("{}", self.bus.read_byte(0xFF01) as char);
 
         self.cycle_count += cycles as u64;
 

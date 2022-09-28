@@ -48,7 +48,7 @@ impl Bus {
         match address {
             0x0000..=0x7FFF => println!("write to Read-Only-Memory, ignore for now"),
             0x8000..=0x9FFF => {
-                println!("VRAM access to {:#08X}", address);
+                // println!("VRAM access to {:#08X}", address);
                 self.memory[address as usize] = byte;
             }
             0xA000..=0xBFFF => {
@@ -56,7 +56,7 @@ impl Bus {
                 self.memory[address as usize] = byte;
             }
             0xC000..=0xDFFF => {
-                println!("WRAM access to {:#08X}", address);
+                // println!("WRAM access to {:#08X}", address);
                 self.memory[address as usize] = byte;
             }
             0xE000..=0xFDFF => println!("Echo RAM, ignore write"),
@@ -83,17 +83,17 @@ impl Bus {
                         self.timer.tac = byte;
                     }
                     _ => {    
-                        println!("IO registers");
+                        // println!("IO registers");
                         self.memory[address as usize] = byte;
                     }
                 }
             }
             0xFF80..=0xFFFE => {
-                println!("HRAM access to {:#08X}", address);
+                // println!("HRAM access to {:#08X}", address);
                 self.memory[address as usize] = byte;
             }
             0xFFFF => {
-                println!("Write to Interrupt Enable register (IE)");
+                // println!("Write to Interrupt Enable register (IE)");
                 self.memory[address as usize] = byte;
             }
         }
