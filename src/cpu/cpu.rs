@@ -1,6 +1,16 @@
-use crate::{cpu::{registers::{Flag, Registers, Regs}, opcode::{INSTRUCTIONS, CB_INSTRUCTIONS}}, mmu::bus::Bus};
+use crate::{
+    cpu::{
+        opcode::{CB_INSTRUCTIONS, INSTRUCTIONS},
+        registers::{Flag, Registers, Regs},
+    },
+    mmu::bus::Bus,
+};
 
-use std::ops::{Add, Sub};
+use std::io::Write;
+use std::{
+    io::StdoutLock,
+    ops::{Add, Sub},
+};
 
 macro_rules! reg8 {
     ($self:ident, $bits:expr, $bus:ident) => {
@@ -23,6 +33,7 @@ pub struct CPU {
     pub ime: bool,
     pub halt: bool,
     pub stopped: bool,
+    ei: bool,
 }
 
 impl CPU {
@@ -32,12 +43,23 @@ impl CPU {
             ime: false,
             halt: false,
             stopped: false,
+            ei: false,
         }
     }
 
     // returns m-cycles for now
     #[rustfmt::skip]
-    pub fn tick(&mut self, bus: &mut Bus) -> u8 {
+    pub fn tick(&mut self, bus: &mut Bus, _lock: &mut StdoutLock) -> u8 {
+        if self.halt {
+            return 0;
+        }
+
+        // ei() is delayed by one instruction
+        if self.ei {
+            self.ime = true;
+            self.ei = false;
+        }
+
         let opcode = self.fetch_operand(bus);
 
         // let print_value = if INSTRUCTIONS[opcode as usize].bytes == 2 {
@@ -54,6 +76,10 @@ impl CPU {
         //     let cb_opcode = bus.read_byte(self.registers.PC);
         //     println!("{:#08X}: {:#04X}      {}", self.registers.PC - 1, cb_opcode, CB_INSTRUCTIONS[cb_opcode as usize].name);
         // }
+
+        // writeln!(lock, "{:04X} BC={:04X} DE={:04X} HL={:04X} AF={:04X} SP={:04X} PC={:04X}",
+        //         self.registers.PC - 1, self.registers.get_bc(), self.registers.get_de(), self.registers.get_hl(), 
+        //         self.registers.get_af(), self.registers.SP, self.registers.PC - 1).unwrap();
 
         if opcode == 0xCB {
             let cb_opcode = self.fetch_operand(bus);
@@ -327,6 +353,7 @@ impl CPU {
                 }
                 0x06 | 0x16 | 0x26 | 0x36 | 0x0E | 0x1E | 0x2E | 0x3E => {
                     let reg = (opcode >> 3) & 0b111;
+
                     let value = self.fetch_operand(bus);
                     self.ld8(bus, reg, value);
 
@@ -342,7 +369,7 @@ impl CPU {
                     5
                 }
                 0x09 | 0x19 | 0x29 | 0x39 => {
-                    let reg = (opcode >> 4) & 0b111;
+                    let reg = (opcode >> 4) & 0b11;
 
                     match reg {
                         0 => { self.add_hl(Regs::BC) }
@@ -355,7 +382,7 @@ impl CPU {
                     2
                 }
                 0x0A | 0x1A | 0x2A | 0x3A => {
-                    let reg = (opcode >> 4) & 0b111;
+                    let reg = (opcode >> 4) & 0b11;
 
                     match reg {
                         0 => { self.ld_a(bus.read_byte(self.registers.get_bc())) }
@@ -374,7 +401,7 @@ impl CPU {
                     2
                 }
                 0x0B | 0x1B | 0x2B | 0x3B => {
-                    let reg = (opcode >> 4) & 0b111;
+                    let reg = (opcode >> 4) & 0b11;
 
                     match reg {
                         0 => { self.dec16(Regs::BC) }
@@ -397,8 +424,10 @@ impl CPU {
                 }
                 0x1F => { self.rra(); 1 }
                 0x20 | 0x28 | 0x30 | 0x38 => {
-                    let condition = (opcode >> 3) & 0x11;
+                    let condition = (opcode >> 3) & 0b11;
                     let value = self.fetch_operand(bus);
+
+                    // println!("{:#04X}, {}", opcode, condition);
 
                     match condition {
                         0 | 1 => self.jr_flag(Flag::Zero, value, condition != 0),
@@ -416,7 +445,7 @@ impl CPU {
 
                     // LD (HL), (HL) doesn't exist, 0x76 is HALT
                     if dest == 6 && source == 6 {
-                        println!("HALT");
+                        self.halt(bus);
                         return 1;
                     }
 
@@ -513,7 +542,7 @@ impl CPU {
                     2
                 }
                 0xC7 | 0xD7 | 0xE7 | 0xF7 | 0xCF | 0xDF | 0xEF | 0xFF => {
-                    let rst_vec = (opcode >> 3) & 0b111;
+                    let rst_vec = opcode & 0b111;
                     self.rst(bus, rst_vec);
 
                     4
@@ -538,6 +567,8 @@ impl CPU {
                     let address = 0xFF00 + (self.fetch_operand(bus) as u16);
                     self.registers.A = bus.read_byte(address);
 
+                    // println!("address: {:#06X}", address);
+
                     3
                 }
                 0xE2 => {
@@ -552,7 +583,7 @@ impl CPU {
 
                     2
                 }
-                0xF3 => { self.di(); 1 }
+                0xF3 => { self.di(bus); 1 }
                 0xFB => { self.ei(); 1 }
                 0xE8 => {
                     // wrapping_add, adding unsigned to signed
@@ -898,6 +929,8 @@ impl CPU {
 
         if self._check_if_half_carry(value - 1, 1, Add::add) {
             self.registers.set_flag(Flag::HalfCarry);
+        } else {
+            self.registers.unset_flag(Flag::HalfCarry);
         }
 
         // println!("New value after increasing by one: {:#04X}", value);
@@ -919,6 +952,8 @@ impl CPU {
 
         if self._check_if_half_carry(value + 1, 1, Sub::sub) {
             self.registers.set_flag(Flag::HalfCarry);
+        } else {
+            self.registers.unset_flag(Flag::HalfCarry);
         }
 
         value
@@ -1172,6 +1207,7 @@ impl CPU {
         }
 
         let (result, carry) = self.registers.A.overflowing_sub(value);
+        // println!("CP: A = {:#04X}, value = {:#04X}", self.registers.A, value);
 
         // A and value are equal
         if result == 0 {
@@ -1208,7 +1244,8 @@ impl CPU {
         self.registers.unset_flag(Flag::HalfCarry);
     }
 
-    fn jr(&mut self, value: u8) { // FIXME:
+    fn jr(&mut self, value: u8) {
+        // FIXME:
         // println!("value as u8: {:#04X}", value);
 
         let value = value.wrapping_neg() as i8 * (-1);
@@ -1268,6 +1305,8 @@ impl CPU {
     ///
     /// Returns the m-cycles it took depending on the condition
     fn jr_flag(&mut self, flag: Flag, value: u8, condition: bool) -> u8 {
+        // println!("Flag: {:?} is {}, condition: {}", flag.clone(), self.registers.get_flag(flag.clone()), condition);
+
         if self.registers.get_flag(flag) == condition {
             self.jr(value);
             return 3;
@@ -1443,11 +1482,12 @@ impl CPU {
     }
 
     fn ei(&mut self) {
-        self.ime = true;
+        self.ei = true;
     }
 
-    fn di(&mut self) {
+    fn di(&mut self, bus: &mut Bus) {
         self.ime = false;
+        // bus.write_byte(0xFFFF, 0x00);
     }
 
     fn ret(&mut self, bus: &Bus) {
@@ -1474,6 +1514,23 @@ impl CPU {
 
     fn rst(&mut self, bus: &mut Bus, value: u8) {
         self.call(bus, value as u16);
+    }
+
+    fn halt(&mut self, bus: &Bus) {
+        let ie = bus.read_byte(0xFFFF);
+        let if_flag = bus.read_byte(0xFF0F);
+
+        if self.ime {
+            if ie & if_flag & 0x1F == 0 {
+                self.halt = true;
+            }
+        } else {
+            if ie & if_flag & 0x1F == 0 {
+                self.halt = true;
+            } else {
+                // TODO: halt bug
+            }
+        }
     }
 
     /// https://robdor.com/2016/08/10/gameboy-emulator-half-carry-flag/

@@ -1,3 +1,5 @@
+use std::io::StdoutLock;
+
 use crate::cpu::cpu::CPU;
 use crate::cpu::interrupts;
 use crate::mmu::bus::Bus;
@@ -10,41 +12,49 @@ pub struct Emulator {
 
 impl Emulator {
     pub fn new(rom: &[u8]) -> Self {
-        Self { 
+        Self {
             cpu: CPU::new(),
             bus: Bus::new(rom),
             cycle_count: 0,
-         }
+        }
     }
 
-    pub fn step(&mut self) -> u8 {
+    pub fn step(&mut self, lock: &mut StdoutLock) -> u8 {
         // TODO:
         // interrupt handling, ugly and should be changed (proof of concept)
+        let ie = self.bus.read_byte(0xFFFF);
+        let if_flag = self.bus.read_byte(0xFF0F);
+
         if self.cpu.ime {
-            self.cpu.ime = false;
-
-            let ie = self.bus.read_byte(0xFFFF);
-            let if_flag = self.bus.read_byte(0xFF0F);
-
             for interrupt in interrupts::get_enabled_interrupts(ie) {
                 if let Some(interr) = interrupt {
                     if interrupts::is_interrupt_requested(if_flag, &interr) {
                         self.cpu.registers.SP -= 1;
-                        self.bus.write_byte(self.cpu.registers.SP, (self.cpu.registers.PC >> 8) as u8);
+                        self.bus
+                            .write_byte(self.cpu.registers.SP, (self.cpu.registers.PC >> 8) as u8);
                         self.cpu.registers.SP -= 1;
-                        self.bus.write_byte(self.cpu.registers.SP, self.cpu.registers.PC as u8);
+                        self.bus
+                            .write_byte(self.cpu.registers.SP, self.cpu.registers.PC as u8);
 
-                        self.bus.write_byte(0xFF0F, interrupts::reset_if(if_flag, &interr));
+                        self.bus
+                            .write_byte(0xFF0F, interrupts::reset_if(if_flag, &interr));
                         self.cpu.registers.PC = interr as u16;
+                            
+                        self.cpu.ime = false;
+                        self.cpu.halt = false;
 
                         self.cycle_count += 5;
                         return 5;
                     }
                 }
             }
+        } else {
+            if ie & if_flag & 0x1F != 0 {
+                self.cpu.halt = false;
+            }
         }
 
-        let cycles = self.cpu.tick(&mut self.bus);
+        let cycles = self.cpu.tick(&mut self.bus, lock);
         self.bus.tick(self.cycle_count);
 
         self.cycle_count += cycles as u64;

@@ -13,6 +13,7 @@ pub struct Registers {
     pub PC: u16,
 }
 
+#[derive(Debug, Clone)]
 pub enum Flag {
     Zero,
     Substraction,
@@ -34,9 +35,9 @@ impl Registers {
     /// `header_checksum` is `$014D` and is responsible for the Carry and Half-Carry flag.
     pub fn new_dmg(header_checksum: u8) -> Self {
         let flag = if header_checksum == 0x00 {
-            0b1000000
+            0b10000000
         } else {
-            0b1011000
+            0b10110000
         };
 
         Self {

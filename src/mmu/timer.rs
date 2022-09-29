@@ -8,11 +8,11 @@ pub struct Timers {
 
 impl Timers {
     pub fn new() -> Self {
-        Self { 
+        Self {
             div: 0xABCC,
             tima: 0,
             tma: 0,
-            tac: 0, 
+            tac: 0xF8,
             if_fired: 0,
         }
     }
@@ -57,7 +57,7 @@ impl Timers {
             1 => 4,
             2 => 16,
             3 => 64,
-            _ => panic!("Greater value than two bits should be able to store!")
+            _ => panic!("Greater value than two bits should be able to store!"),
         }
     }
 }

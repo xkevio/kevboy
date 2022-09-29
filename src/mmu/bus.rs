@@ -10,6 +10,8 @@ impl Bus {
         let mut memory = [0u8; 0xFFFF + 1];
         memory[..32768].copy_from_slice(rom);
 
+        initialize_internal_registers(&mut memory);
+
         Self {
             memory,
             timer: Timers::new(),
@@ -82,7 +84,8 @@ impl Bus {
                         self.memory[address as usize] = byte;
                         self.timer.tac = byte;
                     }
-                    _ => {    
+                    0xFF44 => {}
+                    _ => {
                         // println!("IO registers");
                         self.memory[address as usize] = byte;
                     }
@@ -98,4 +101,17 @@ impl Bus {
             }
         }
     }
+}
+
+fn initialize_internal_registers(memory: &mut [u8]) {
+    memory[0xFF40] = 0x91;
+    memory[0xFF07] = 0xF8;
+    memory[0xFF0F] = 0xE1;
+    memory[0xFF00] = 0xCF;
+    memory[0xFF41] = 0x81;
+    memory[0xFF46] = 0xFF;
+    memory[0xFF47] = 0xFC;
+    memory[0xFF44] = 0x90;
+    memory[0xFF4D] = 0xFF;
+    memory[0xFF50] = 0x01;
 }
