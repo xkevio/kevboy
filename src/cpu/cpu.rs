@@ -6,11 +6,11 @@ use crate::{
     mmu::bus::Bus,
 };
 
-use std::io::Write;
 use std::{
     io::StdoutLock,
     ops::{Add, Sub},
 };
+use std::io::Write;
 
 macro_rules! reg8 {
     ($self:ident, $bits:expr, $bus:ident) => {
@@ -49,7 +49,7 @@ impl CPU {
 
     // returns m-cycles for now
     #[rustfmt::skip]
-    pub fn tick(&mut self, bus: &mut Bus, _lock: &mut StdoutLock) -> u8 {
+    pub fn tick(&mut self, bus: &mut Bus, lock: &mut StdoutLock) -> u8 {
         if self.halt {
             return 0;
         }
@@ -76,10 +76,15 @@ impl CPU {
         //     let cb_opcode = bus.read_byte(self.registers.PC);
         //     println!("{:#08X}: {:#04X}      {}", self.registers.PC - 1, cb_opcode, CB_INSTRUCTIONS[cb_opcode as usize].name);
         // }
+        // let mem0 = bus.read_byte(self.registers.PC - 1);
+        // let mem1 = bus.read_byte(self.registers.PC);
+        // let mem2 = bus.read_byte(self.registers.PC + 1);
+        // let mem3 = bus.read_byte(self.registers.PC + 2);
 
-        // writeln!(lock, "{:04X} BC={:04X} DE={:04X} HL={:04X} AF={:04X} SP={:04X} PC={:04X}",
-        //         self.registers.PC - 1, self.registers.get_bc(), self.registers.get_de(), self.registers.get_hl(), 
-        //         self.registers.get_af(), self.registers.SP, self.registers.PC - 1).unwrap();
+
+        // writeln!(lock, "A: {:02X} F: {:02X} B: {:02X} C: {:02X} D: {:02X} E: {:02X} H: {:02X} L: {:02X} SP: {:04X} PC: 00:{:04X} ({:02X} {:02X} {:02X} {:02X})",
+        //         self.registers.A, self.registers.F, self.registers.B, self.registers.C, self.registers.D, self.registers.E, 
+        //         self.registers.H, self.registers.L, self.registers.SP, self.registers.PC - 1, mem0, mem1, mem2, mem3).unwrap();
 
         if opcode == 0xCB {
             let cb_opcode = self.fetch_operand(bus);
@@ -542,7 +547,7 @@ impl CPU {
                     2
                 }
                 0xC7 | 0xD7 | 0xE7 | 0xF7 | 0xCF | 0xDF | 0xEF | 0xFF => {
-                    let rst_vec = opcode & 0b111;
+                    let rst_vec = opcode & 0b00111000;
                     self.rst(bus, rst_vec);
 
                     4
@@ -871,23 +876,31 @@ impl CPU {
         bus.write_byte(value, self.registers.A);
     }
 
+    // make prettier, dont have 3 half_carry functions
     fn add_sp(&mut self, value: u8) {
-        let signed_operand = value.wrapping_neg() as u16;
+        let signed_operand = value.wrapping_neg() as i8 * (-1);
 
-        if self._check_if_half_carry_16(self.registers.SP, signed_operand, u16::wrapping_add) {
+        if self._check_if_half_carry_16(
+            self.registers.SP,
+            signed_operand as u16,
+            u16::wrapping_add,
+            true,
+        ) {
             self.registers.set_flag(Flag::HalfCarry);
         } else {
             self.registers.unset_flag(Flag::HalfCarry);
         }
 
-        let (result, cy) = self.registers.SP.overflowing_add(signed_operand);
-        self.registers.SP = result;
-
-        if cy {
+        if self._check_if_carry_16(self.registers.SP, signed_operand as u16, u16::wrapping_add) {
             self.registers.set_flag(Flag::Carry);
         } else {
             self.registers.unset_flag(Flag::Carry);
         }
+
+        self.registers.SP += signed_operand as u16;
+
+        self.registers.unset_flag(Flag::Zero);
+        self.registers.unset_flag(Flag::Substraction);
     }
 
     /// Load 2 bytes of data into `reg16`.
@@ -989,6 +1002,7 @@ impl CPU {
                     self.registers.get_hl(),
                     self.registers.get_bc(),
                     Add::add,
+                    false,
                 );
 
                 let (result, cy) = self
@@ -1004,6 +1018,7 @@ impl CPU {
                     self.registers.get_hl(),
                     self.registers.get_de(),
                     Add::add,
+                    false,
                 );
 
                 let (result, cy) = self
@@ -1019,6 +1034,7 @@ impl CPU {
                     self.registers.get_hl(),
                     self.registers.get_hl(),
                     Add::add,
+                    false,
                 );
 
                 let (result, cy) = self
@@ -1034,6 +1050,7 @@ impl CPU {
                     self.registers.get_hl(),
                     self.registers.SP,
                     Add::add,
+                    false,
                 );
 
                 let (result, cy) = self.registers.get_hl().overflowing_add(self.registers.SP);
@@ -1065,6 +1082,8 @@ impl CPU {
     fn add_a(&mut self, value: u8) {
         if self._check_if_half_carry(self.registers.A, value, Add::add) {
             self.registers.set_flag(Flag::HalfCarry);
+        } else {
+            self.registers.unset_flag(Flag::HalfCarry);
         }
 
         let (result, carry) = self.registers.A.overflowing_add(value);
@@ -1085,14 +1104,21 @@ impl CPU {
         self.registers.unset_flag(Flag::Substraction);
     }
 
+    // TODO: better half-carry for three components
     fn adc_a(&mut self, value: u8) {
-        let adc_value = value + (self.registers.get_flag(Flag::Carry) as u8);
+        // let adc_value = value + (self.registers.get_flag(Flag::Carry) as u8);
+        // self.add_a(adc_value);
 
-        if self._check_if_half_carry(self.registers.A, adc_value, Add::add) {
+        if ((self.registers.A & 0xF) + (value & 0xF) + (self.registers.get_flag(Flag::Carry) as u8)) & 0x10 == 0x10 {
             self.registers.set_flag(Flag::HalfCarry);
+        } else {
+            self.registers.unset_flag(Flag::HalfCarry);
         }
 
-        let (result, carry) = self.registers.A.overflowing_add(adc_value);
+
+        let (intermediate_result, c1) = self.registers.A.overflowing_add(value);
+        let (result, c2) = intermediate_result.overflowing_add(self.registers.get_flag(Flag::Carry) as u8);
+
         self.registers.A = result;
 
         if self.registers.A == 0 {
@@ -1101,7 +1127,7 @@ impl CPU {
             self.registers.unset_flag(Flag::Zero);
         }
 
-        if carry {
+        if c1 || c2 {
             self.registers.set_flag(Flag::Carry);
         } else {
             self.registers.unset_flag(Flag::Carry);
@@ -1113,6 +1139,8 @@ impl CPU {
     fn sub_a(&mut self, value: u8) {
         if self._check_if_half_carry(self.registers.A, value, Sub::sub) {
             self.registers.set_flag(Flag::HalfCarry);
+        } else {
+            self.registers.unset_flag(Flag::HalfCarry);
         }
 
         let (result, carry) = self.registers.A.overflowing_sub(value);
@@ -1134,13 +1162,16 @@ impl CPU {
     }
 
     fn sbc_a(&mut self, value: u8) {
-        let sbc_value = value + (self.registers.get_flag(Flag::Carry) as u8);
+        // let sbc_value = value + (self.registers.get_flag(Flag::Carry) as u8);
 
-        if self._check_if_half_carry(self.registers.A, sbc_value, Sub::sub) {
+        if ((self.registers.A & 0xF) - (value & 0xF) - (self.registers.get_flag(Flag::Carry) as u8)) & 0x10 == 0x10 {
             self.registers.set_flag(Flag::HalfCarry);
+        } else {
+            self.registers.unset_flag(Flag::HalfCarry);
         }
 
-        let (result, carry) = self.registers.A.overflowing_sub(sbc_value);
+        let (intermediate_result, c1) = self.registers.A.overflowing_sub(value);
+        let (result, c2) = intermediate_result.overflowing_sub(self.registers.get_flag(Flag::Carry) as u8);
         self.registers.A = result;
 
         if self.registers.A == 0 {
@@ -1149,7 +1180,7 @@ impl CPU {
             self.registers.unset_flag(Flag::Zero);
         }
 
-        if carry {
+        if c1 || c2 {
             self.registers.set_flag(Flag::Carry);
         } else {
             self.registers.unset_flag(Flag::Carry);
@@ -1204,6 +1235,8 @@ impl CPU {
     fn cp_a(&mut self, value: u8) {
         if self._check_if_half_carry(self.registers.A, value, Sub::sub) {
             self.registers.set_flag(Flag::HalfCarry);
+        } else {
+            self.registers.unset_flag(Flag::HalfCarry);
         }
 
         let (result, carry) = self.registers.A.overflowing_sub(value);
@@ -1540,7 +1573,21 @@ impl CPU {
         op(a & 0xF, b & 0xF) & 0x10 == 0x10
     }
 
-    fn _check_if_half_carry_16<F: Fn(u16, u16) -> u16>(&self, a: u16, b: u16, op: F) -> bool {
-        op(a & 0xFFF, b & 0xFFF) & 0x100 == 0x100
+    fn _check_if_half_carry_16<F: Fn(u16, u16) -> u16>(
+        &self,
+        a: u16,
+        b: u16,
+        op: F,
+        bit3: bool,
+    ) -> bool {
+        if !bit3 {
+            op(a & 0xFFF, b & 0xFFF) & 0x1000 == 0x1000
+        } else {
+            op(a & 0xF, b & 0xF) & 0x10 == 0x10
+        }
+    }
+
+    fn _check_if_carry_16<F: Fn(u16, u16) -> u16>(&self, a: u16, b: u16, op: F) -> bool {
+        op(a & 0xFF, b & 0xFF) & 0x100 == 0x100
     }
 }

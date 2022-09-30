@@ -39,7 +39,7 @@ impl Emulator {
                         self.bus
                             .write_byte(0xFF0F, interrupts::reset_if(if_flag, &interr));
                         self.cpu.registers.PC = interr as u16;
-                            
+
                         self.cpu.ime = false;
                         self.cpu.halt = false;
 

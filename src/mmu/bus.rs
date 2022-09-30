@@ -66,7 +66,7 @@ impl Bus {
             0xFEA0..=0xFEFF => println!("Not usable, usage of this area is prohibited"),
             0xFF00..=0xFF7F => {
                 match address {
-                    0xFF01 => print!("{}", byte as char), // SB output for blargg tests
+                    0xFF01 => eprint!("{}", byte as char), // SB output for blargg tests
                     0xFF04 => {
                         // DIV register: any write resets it to 0
                         self.memory[address as usize] = 0;
