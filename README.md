@@ -11,3 +11,9 @@
 07-jr,jp,call,ret,rst: Passed
 
 08-misc instrs: Passed
+
+09-op r,r: Passed
+
+10-bit ops: Passed
+
+11-op a,(hl): Passed

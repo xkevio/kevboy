@@ -62,29 +62,21 @@ impl CPU {
 
         let opcode = self.fetch_operand(bus);
 
-        // let print_value = if INSTRUCTIONS[opcode as usize].bytes == 2 {
-        //     bus.read_byte(self.registers.PC) as u16
-        // } else if INSTRUCTIONS[opcode as usize].bytes == 3 {
-        //     bus.read_16(self.registers.PC)
+        // let op_mnemonic = if opcode == 0xCB {
+        //     CB_INSTRUCTIONS[bus.read_byte(self.registers.PC) as usize].name
         // } else {
-        //     0
+        //     INSTRUCTIONS[opcode as usize].name
         // };
 
-        // if opcode != 0xCB {
-        //     println!("{:#08X}: {:#04X}      {} {:#06X}", self.registers.PC - 1, opcode, INSTRUCTIONS[opcode as usize].name, print_value);
-        // } else {
-        //     let cb_opcode = bus.read_byte(self.registers.PC);
-        //     println!("{:#08X}: {:#04X}      {}", self.registers.PC - 1, cb_opcode, CB_INSTRUCTIONS[cb_opcode as usize].name);
-        // }
-        // let mem0 = bus.read_byte(self.registers.PC - 1);
-        // let mem1 = bus.read_byte(self.registers.PC);
-        // let mem2 = bus.read_byte(self.registers.PC + 1);
-        // let mem3 = bus.read_byte(self.registers.PC + 2);
+        let mem0 = bus.read_byte(self.registers.PC - 1);
+        let mem1 = bus.read_byte(self.registers.PC);
+        let mem2 = bus.read_byte(self.registers.PC + 1);
+        let mem3 = bus.read_byte(self.registers.PC + 2);
 
 
-        // writeln!(lock, "A: {:02X} F: {:02X} B: {:02X} C: {:02X} D: {:02X} E: {:02X} H: {:02X} L: {:02X} SP: {:04X} PC: 00:{:04X} ({:02X} {:02X} {:02X} {:02X})",
-        //         self.registers.A, self.registers.F, self.registers.B, self.registers.C, self.registers.D, self.registers.E, 
-        //         self.registers.H, self.registers.L, self.registers.SP, self.registers.PC - 1, mem0, mem1, mem2, mem3).unwrap();
+        writeln!(lock, "A: {:02X} F: {:02X} B: {:02X} C: {:02X} D: {:02X} E: {:02X} H: {:02X} L: {:02X} SP: {:04X} PC: 00:{:04X} ({:02X} {:02X} {:02X} {:02X})",
+                self.registers.A, self.registers.F, self.registers.B, self.registers.C, self.registers.D, self.registers.E, 
+                self.registers.H, self.registers.L, self.registers.SP, self.registers.PC - 1, mem0, mem1, mem2, mem3).unwrap();
 
         if opcode == 0xCB {
             let cb_opcode = self.fetch_operand(bus);
@@ -117,7 +109,7 @@ impl CPU {
                     );
                     4
                 }
-                0x0F => { self.registers.A = self.rl(self.registers.A); 2 }
+                0x0F => { self.registers.A = self.rrc(self.registers.A); 2 }
                 0x10 => { self.registers.B = self.rl(self.registers.B); 2 }
                 0x11 => { self.registers.C = self.rl(self.registers.C); 2 }
                 0x12 => { self.registers.D = self.rl(self.registers.D); 2 }
@@ -145,7 +137,7 @@ impl CPU {
                     );
                     4
                 }
-                0x1F => { self.registers.A = self.sla(self.registers.A); 2 }
+                0x1F => { self.registers.A = self.rr(self.registers.A); 2 }
                 0x20 => { self.registers.B = self.sla(self.registers.B); 2 }
                 0x21 => { self.registers.C = self.sla(self.registers.C); 2 }
                 0x22 => { self.registers.D = self.sla(self.registers.D); 2 }
@@ -236,7 +228,7 @@ impl CPU {
                             );
                             4
                         }
-                        7 => { self.registers.B = self.res(bit, self.registers.B); 2 }
+                        7 => { self.registers.A = self.res(bit, self.registers.A); 2 }
                         _ => panic!("Invalid register!")
                     }
                 }
@@ -258,7 +250,7 @@ impl CPU {
                             );
                             4
                         }
-                        7 => { self.registers.B = self.set(bit, self.registers.B); 2 }
+                        7 => { self.registers.A = self.set(bit, self.registers.A); 2 }
                         _ => panic!("Invalid register!")
                     }
                 }
@@ -774,7 +766,12 @@ impl CPU {
             self.registers.unset_flag(Flag::Carry);
         }
 
-        let reg8 = reg8 >> 1;
+        let bit7 = reg8 & (1 << 7);
+        let reg8 = if bit7 == 0 { 
+            reg8 >> 1
+        } else {
+            (reg8 >> 1) | (1 << 7)
+        };
 
         if reg8 == 0 {
             self.registers.set_flag(Flag::Zero);
@@ -790,7 +787,7 @@ impl CPU {
 
     fn swap(&mut self, reg8: u8) -> u8 {
         let higher_four_bits = reg8 & 0xF0;
-        let reg8 = (reg8 << 4) | higher_four_bits;
+        let reg8 = (reg8 << 4) | (higher_four_bits >> 4);
 
         if reg8 == 0 {
             self.registers.set_flag(Flag::Zero);

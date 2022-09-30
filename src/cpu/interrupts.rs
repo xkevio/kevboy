@@ -7,22 +7,22 @@ pub enum Interrupt {
 }
 
 pub fn get_enabled_interrupts(ie: u8) -> [Option<Interrupt>; 5] {
-    let vblank = ((ie & 0b1) == 1).then_some(Interrupt::VBlank);
-    let stat = ((ie & 0b10) == 1).then_some(Interrupt::STAT);
-    let timer = ((ie & 0b100) == 1).then_some(Interrupt::Timer);
-    let serial = ((ie & 0b1000) == 1).then_some(Interrupt::Serial);
-    let joypad = ((ie & 0b10000) == 1).then_some(Interrupt::Joypad);
+    let vblank = ((ie & 0b1) != 0).then_some(Interrupt::VBlank);
+    let stat = ((ie & 0b10) != 0).then_some(Interrupt::STAT);
+    let timer = ((ie & 0b100) != 0).then_some(Interrupt::Timer);
+    let serial = ((ie & 0b1000) != 0).then_some(Interrupt::Serial);
+    let joypad = ((ie & 0b10000) != 0).then_some(Interrupt::Joypad);
 
     [vblank, stat, timer, serial, joypad]
 }
 
 pub fn is_interrupt_requested(if_flag: u8, interrupt: &Interrupt) -> bool {
     match interrupt {
-        Interrupt::VBlank => if_flag & 0b1 == 1,
-        Interrupt::STAT => if_flag & 0b10 == 1,
-        Interrupt::Timer => if_flag & 0b100 == 1,
-        Interrupt::Serial => if_flag & 0b1000 == 1,
-        Interrupt::Joypad => if_flag & 0b10000 == 1,
+        Interrupt::VBlank => if_flag & 0b1 != 0,
+        Interrupt::STAT => if_flag & 0b10 != 0,
+        Interrupt::Timer => if_flag & 0b100 != 0,
+        Interrupt::Serial => if_flag & 0b1000 != 0,
+        Interrupt::Joypad => if_flag & 0b10000 != 0,
     }
 }
 
