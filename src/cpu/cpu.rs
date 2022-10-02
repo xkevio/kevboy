@@ -586,7 +586,7 @@ impl CPU {
 
                     2
                 }
-                0xF3 => { self.di(bus); 1 }
+                0xF3 => { self.di(); 1 }
                 0xFB => { self.ei(); 1 }
                 0xE8 => {
                     // wrapping_add, adding unsigned to signed
@@ -1528,9 +1528,8 @@ impl CPU {
         self.ei = true;
     }
 
-    fn di(&mut self, bus: &mut Bus) {
+    fn di(&mut self) {
         self.ime = false;
-        // bus.write_byte(0xFFFF, 0x00);
     }
 
     fn ret(&mut self, bus: &Bus) {
