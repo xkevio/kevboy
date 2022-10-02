@@ -4,7 +4,7 @@ use std::{
 };
 
 use eframe::{
-    egui::{menu, CentralPanel, CollapsingHeader, TextEdit, TextStyle, TopBottomPanel},
+    egui::{menu, CentralPanel, CollapsingHeader, TextEdit, TextStyle, TopBottomPanel, Window},
     epaint::ColorImage,
     App,
 };
@@ -12,22 +12,24 @@ use egui_extras::RetainedImage;
 
 use crate::WIDTH;
 use crate::{emulator::Emulator, HEIGHT};
-use crate::{ui::memory_viewer::MemoryViewer, BOOT_ROM};
+use crate::{ui::memory_viewer::MemoryViewer, TEST_ROM};
 
 pub struct Kevboy<'a> {
     emulator: Emulator,
     cy_count: u16,
     mem_viewer: MemoryViewer<'a>,
+    is_memory_window_open: bool,
     lock: StdoutLock<'a>,
 }
 
 impl<'a> Default for Kevboy<'a> {
     fn default() -> Self {
         Self {
-            emulator: Emulator::new(BOOT_ROM),
+            emulator: Emulator::new(TEST_ROM),
             cy_count: 0,
-            mem_viewer: MemoryViewer::new(BOOT_ROM, false),
-            lock: std::io::stdout().lock(),
+            mem_viewer: MemoryViewer::new(TEST_ROM, true),
+            is_memory_window_open: false,
+            lock: std::io::stdout().lock(), // temporary, for slightly faster logging
         }
     }
 }
@@ -60,11 +62,11 @@ impl<'a> App for Kevboy<'a> {
 
                 ui.menu_button("Options", |_ui| {});
 
-                ui.separator();
-
-                if ui.button("Start BOOT ROM").clicked() {
-                    println!("Booting up!");
-                };
+                ui.menu_button("Debug", |ui| {
+                    if ui.button("Show memory (hex)").clicked() {
+                        self.is_memory_window_open = !self.is_memory_window_open;
+                    }
+                });
             });
         });
 
@@ -87,7 +89,7 @@ impl<'a> App for Kevboy<'a> {
                                 ui.add(TextEdit::multiline(&mut "AF:\nBC:\nDE:\nHL:\n\nSP:\nPC:"));
                                 ui.label("Flags:");
                                 ui.add(TextEdit::multiline(
-                                    &mut "F:\n\nZero:\nSubstraction:\nHalf-Carry:\nCarry:\n",
+                                    &mut "Z\t\tN\t\tH\t\tC\n",
                                 ));
                             });
                     });
@@ -103,15 +105,15 @@ impl<'a> App for Kevboy<'a> {
                             );
                         });
                 });
-
-                // Memory
-                CollapsingHeader::new("Memory")
-                    .default_open(true)
-                    .show(ui, |ui| {
-                        self.mem_viewer.show(ui);
-                    });
             });
         });
+
+        // can't be closed yet, WIP
+        if self.is_memory_window_open {
+            Window::new("Memory").open(&mut true).show(ctx, |ui| {
+                self.mem_viewer.show(ui);
+            });
+        }
 
         // println!("{:?}", Instant::now());
         while self.cy_count < 17_476 {
@@ -119,7 +121,6 @@ impl<'a> App for Kevboy<'a> {
         }
 
         let start = Instant::now();
-
         while start.elapsed() < Duration::from_micros(16667) {
             // do nothing
         }

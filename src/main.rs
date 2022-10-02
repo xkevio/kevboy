@@ -1,6 +1,5 @@
 #![allow(dead_code)] // TODO
 
-use eframe::epaint::Vec2;
 use ui::ui::Kevboy;
 
 mod cpu;
@@ -11,13 +10,10 @@ mod ui;
 const WIDTH: usize = 160;
 const HEIGHT: usize = 144;
 
-const BOOT_ROM: &[u8; 32768] = include_bytes!("../blargg_tests/instr_timing.gb");
+const TEST_ROM: &[u8; 32768] = include_bytes!("../blargg_tests/instr_timing.gb");
 
 fn main() {
-    let native_options = eframe::NativeOptions {
-        initial_window_size: Some(Vec2::new(1400.0, 720.0)),
-        ..Default::default()
-    };
+    let native_options = eframe::NativeOptions::default();
 
     eframe::run_native(
         "Kevboy-rs",
