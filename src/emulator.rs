@@ -29,15 +29,13 @@ impl Emulator {
             for interrupt in interrupts::get_enabled_interrupts(ie) {
                 if let Some(interr) = interrupt {
                     if interrupts::is_interrupt_requested(if_flag, &interr) {
-                        self.cpu.registers.SP -= 1;
-
-                        self.bus
-                            .write_byte(self.cpu.registers.SP, (self.cpu.registers.PC >> 8) as u8);
+                        let pc_bytes = self.cpu.registers.PC.to_be_bytes();
 
                         self.cpu.registers.SP -= 1;
+                        self.bus.write_byte(self.cpu.registers.SP, pc_bytes[0]);
 
-                        self.bus
-                            .write_byte(self.cpu.registers.SP, self.cpu.registers.PC as u8);
+                        self.cpu.registers.SP -= 1;
+                        self.bus.write_byte(self.cpu.registers.SP, pc_bytes[1]);
 
                         self.bus
                             .write_byte(0xFF0F, interrupts::reset_if(if_flag, &interr));

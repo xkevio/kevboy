@@ -98,22 +98,12 @@ impl Registers {
         self.L = bytes[1];
     }
 
-    // sets the lower bits of the AF register (F) according to a flag
-    pub fn set_flag(&mut self, flag: Flag) {
-        match flag {
-            Flag::Zero => self.F |= 1 << 7,
-            Flag::Substraction => self.F |= 1 << 6,
-            Flag::HalfCarry => self.F |= 1 << 5,
-            Flag::Carry => self.F |= 1 << 4,
-        }
-    }
-
-    pub fn unset_flag(&mut self, flag: Flag) {
-        match flag {
-            Flag::Zero => self.F &= !(1 << 7),
-            Flag::Substraction => self.F &= !(1 << 6),
-            Flag::HalfCarry => self.F &= !(1 << 5),
-            Flag::Carry => self.F &= !(1 << 4),
+    // sets the lower bits (4-7) of the AF register (F) according to a flag
+    pub fn set_flag(&mut self, flag: Flag, bit: bool) {
+        if bit {
+            self.set_flag_bit(flag);
+        } else {
+            self.unset_flag_bit(flag);
         }
     }
 
@@ -123,6 +113,24 @@ impl Registers {
             Flag::Substraction => (self.F & (1 << 6)) != 0,
             Flag::HalfCarry => (self.F & (1 << 5)) != 0,
             Flag::Carry => (self.F & (1 << 4)) != 0,
+        }
+    }
+
+    fn set_flag_bit(&mut self, flag: Flag) {
+        match flag {
+            Flag::Zero => self.F |= 1 << 7,
+            Flag::Substraction => self.F |= 1 << 6,
+            Flag::HalfCarry => self.F |= 1 << 5,
+            Flag::Carry => self.F |= 1 << 4,
+        }
+    }
+
+    fn unset_flag_bit(&mut self, flag: Flag) {
+        match flag {
+            Flag::Zero => self.F &= !(1 << 7),
+            Flag::Substraction => self.F &= !(1 << 6),
+            Flag::HalfCarry => self.F &= !(1 << 5),
+            Flag::Carry => self.F &= !(1 << 4),
         }
     }
 }

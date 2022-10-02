@@ -1,12 +1,9 @@
 use crate::{
-    cpu::{
-        opcode::{CB_INSTRUCTIONS, INSTRUCTIONS},
-        registers::{Flag, Registers, Regs},
-    },
+    cpu::registers::{Flag, Registers, Regs},
     mmu::bus::Bus,
 };
 
-use std::io::Write;
+// use std::io::Write;
 use std::{
     io::StdoutLock,
     ops::{Add, Sub},
@@ -39,7 +36,7 @@ pub struct CPU {
 impl CPU {
     pub fn new() -> Self {
         Self {
-            registers: Registers::new_dmg(0x66),
+            registers: Registers::new_dmg(0x66), // no header check yet, blargg tests have 0x66
             ime: false,
             halt: false,
             stopped: false,
@@ -204,16 +201,13 @@ impl CPU {
                     let bit = (cb_opcode >> 3) & 0b111;
                     let reg = cb_opcode & 0b111;
 
-                    match reg {
-                        0 => { self.bit(bit, self.registers.B); 2 }
-                        1 => { self.bit(bit, self.registers.C); 2 }
-                        2 => { self.bit(bit, self.registers.D); 2 }
-                        3 => { self.bit(bit, self.registers.E); 2 }
-                        4 => { self.bit(bit, self.registers.H); 2 }
-                        5 => { self.bit(bit, self.registers.L); 2 }
-                        6 => { self.bit(bit, bus.read_byte(self.registers.get_hl())); 3 }
-                        7 => { self.bit(bit, self.registers.A); 2 }
-                        _ => panic!("Invalid register!")
+                    self.bit(bit, reg8!(self, reg, bus));
+
+                    // 3 cycles if reg == (HL)
+                    if reg == 0b110 {
+                        3
+                    } else {
+                        2
                     }
                 }
                 0x80..=0xBF => {
@@ -430,8 +424,6 @@ impl CPU {
                     let condition = (opcode >> 3) & 0b11;
                     let value = self.fetch_operand(bus);
 
-                    // println!("{:#04X}, {}", opcode, condition);
-
                     match condition {
                         0 | 1 => self.jr_flag(Flag::Zero, value, condition != 0),
                         2 | 3 => self.jr_flag(Flag::Carry, value, condition != 2),
@@ -443,6 +435,10 @@ impl CPU {
                 0x37 => { self.scf(); 1 }
                 0x3F => { self.ccf(); 1 }
                 0x40..=0x7F => {
+                    if opcode == 0x40 {
+                        println!("LD B, B");
+                    }
+
                     let dest = (opcode >> 3) & 0b111;
                     let source = opcode & 0b111;
 
@@ -570,8 +566,6 @@ impl CPU {
                     let address = 0xFF00 + (self.fetch_operand(bus) as u16);
                     self.registers.A = bus.read_byte(address);
 
-                    // println!("address: {:#06X}", address);
-
                     3
                 }
                 0xE2 => {
@@ -633,56 +627,31 @@ impl CPU {
     /// Read next operand at PC and increase PC after.
     fn fetch_operand(&mut self, bus: &Bus) -> u8 {
         let operand = bus.read_byte(self.registers.PC);
-
-        // print!(" {:#04X} ", operand);
-
-        // println!("PC: {:#08X} executing {:#04X}", self.registers.PC, operand);
-
         self.registers.PC += 1;
-
-        // println!("PC: {:#08X} after increase by one", self.registers.PC);
 
         operand
     }
 
     fn rlc(&mut self, reg8: u8) -> u8 {
-        if reg8 & (1 << 7) == 0 {
-            self.registers.unset_flag(Flag::Carry);
-        } else {
-            self.registers.set_flag(Flag::Carry);
-        }
+        self.registers.set_flag(Flag::Carry, reg8 & (1 << 7) != 0);
 
         let reg8 = reg8.rotate_left(1);
 
-        if reg8 == 0 {
-            self.registers.set_flag(Flag::Zero);
-        } else {
-            self.registers.unset_flag(Flag::Zero);
-        }
-
-        self.registers.unset_flag(Flag::Substraction);
-        self.registers.unset_flag(Flag::HalfCarry);
+        self.registers.set_flag(Flag::Zero, reg8 == 0);
+        self.registers.set_flag(Flag::Substraction, false);
+        self.registers.set_flag(Flag::HalfCarry, false);
 
         reg8
     }
 
     fn rrc(&mut self, reg8: u8) -> u8 {
-        if reg8 & 0b1 == 0 {
-            self.registers.unset_flag(Flag::Carry);
-        } else {
-            self.registers.set_flag(Flag::Carry);
-        }
+        self.registers.set_flag(Flag::Carry, reg8 & 0b1 != 0);
 
         let reg8 = reg8.rotate_right(1);
 
-        if reg8 == 0 {
-            self.registers.set_flag(Flag::Zero);
-        } else {
-            self.registers.unset_flag(Flag::Zero);
-        }
-
-        self.registers.unset_flag(Flag::Substraction);
-        self.registers.unset_flag(Flag::HalfCarry);
+        self.registers.set_flag(Flag::Zero, reg8 == 0);
+        self.registers.set_flag(Flag::Substraction, false);
+        self.registers.set_flag(Flag::HalfCarry, false);
 
         reg8
     }
@@ -697,20 +666,10 @@ impl CPU {
             reg8 &= !(1);
         }
 
-        if bit7 != 0 {
-            self.registers.set_flag(Flag::Carry);
-        } else {
-            self.registers.unset_flag(Flag::Carry);
-        }
-
-        if reg8 == 0 {
-            self.registers.set_flag(Flag::Zero);
-        } else {
-            self.registers.unset_flag(Flag::Zero);
-        }
-
-        self.registers.unset_flag(Flag::Substraction);
-        self.registers.unset_flag(Flag::HalfCarry);
+        self.registers.set_flag(Flag::Carry, bit7 != 0);
+        self.registers.set_flag(Flag::Zero, reg8 == 0);
+        self.registers.set_flag(Flag::Substraction, false);
+        self.registers.set_flag(Flag::HalfCarry, false);
 
         reg8
     }
@@ -725,52 +684,29 @@ impl CPU {
             reg8 &= !(1 << 7);
         }
 
-        if bit0 != 0 {
-            self.registers.set_flag(Flag::Carry);
-        } else {
-            self.registers.unset_flag(Flag::Carry);
-        }
-
-        if reg8 == 0 {
-            self.registers.set_flag(Flag::Zero);
-        } else {
-            self.registers.unset_flag(Flag::Zero);
-        }
-
-        self.registers.unset_flag(Flag::Substraction);
-        self.registers.unset_flag(Flag::HalfCarry);
+        self.registers.set_flag(Flag::Carry, bit0 != 0);
+        self.registers.set_flag(Flag::Zero, reg8 == 0);
+        self.registers.set_flag(Flag::Substraction, false);
+        self.registers.set_flag(Flag::HalfCarry, false);
 
         reg8
     }
 
     fn sla(&mut self, reg8: u8) -> u8 {
-        if reg8 & (1 << 7) != 0 {
-            self.registers.set_flag(Flag::Carry);
-        } else {
-            self.registers.unset_flag(Flag::Carry);
-        }
+        self.registers.set_flag(Flag::Carry, reg8 & (1 << 7) != 0);
 
         let mut reg8 = reg8 << 1;
         reg8 &= !(1);
 
-        if reg8 == 0 {
-            self.registers.set_flag(Flag::Zero);
-        } else {
-            self.registers.unset_flag(Flag::Zero);
-        }
-
-        self.registers.unset_flag(Flag::Substraction);
-        self.registers.unset_flag(Flag::HalfCarry);
+        self.registers.set_flag(Flag::Zero, reg8 == 0);
+        self.registers.set_flag(Flag::Substraction, false);
+        self.registers.set_flag(Flag::HalfCarry, false);
 
         reg8
     }
 
     fn sra(&mut self, reg8: u8) -> u8 {
-        if reg8 & 0b1 != 0 {
-            self.registers.set_flag(Flag::Carry);
-        } else {
-            self.registers.unset_flag(Flag::Carry);
-        }
+        self.registers.set_flag(Flag::Carry, reg8 & 0b1 != 0);
 
         let bit7 = reg8 & (1 << 7);
         let reg8 = if bit7 == 0 {
@@ -779,14 +715,9 @@ impl CPU {
             (reg8 >> 1) | (1 << 7)
         };
 
-        if reg8 == 0 {
-            self.registers.set_flag(Flag::Zero);
-        } else {
-            self.registers.unset_flag(Flag::Zero);
-        }
-
-        self.registers.unset_flag(Flag::Substraction);
-        self.registers.unset_flag(Flag::HalfCarry);
+        self.registers.set_flag(Flag::Zero, reg8 == 0);
+        self.registers.set_flag(Flag::Substraction, false);
+        self.registers.set_flag(Flag::HalfCarry, false);
 
         reg8
     }
@@ -795,37 +726,23 @@ impl CPU {
         let higher_four_bits = reg8 & 0xF0;
         let reg8 = (reg8 << 4) | (higher_four_bits >> 4);
 
-        if reg8 == 0 {
-            self.registers.set_flag(Flag::Zero);
-        } else {
-            self.registers.unset_flag(Flag::Zero);
-        }
-
-        self.registers.unset_flag(Flag::Substraction);
-        self.registers.unset_flag(Flag::HalfCarry);
-        self.registers.unset_flag(Flag::Carry);
+        self.registers.set_flag(Flag::Zero, reg8 == 0);
+        self.registers.set_flag(Flag::Substraction, false);
+        self.registers.set_flag(Flag::HalfCarry, false);
+        self.registers.set_flag(Flag::Carry, false);
 
         reg8
     }
 
     fn srl(&mut self, reg8: u8) -> u8 {
-        if reg8 & 0b1 != 0 {
-            self.registers.set_flag(Flag::Carry);
-        } else {
-            self.registers.unset_flag(Flag::Carry);
-        }
+        self.registers.set_flag(Flag::Carry, reg8 & 0b1 != 0);
 
         let mut reg8 = reg8 >> 1;
         reg8 &= !(1 << 7);
 
-        if reg8 == 0 {
-            self.registers.set_flag(Flag::Zero);
-        } else {
-            self.registers.unset_flag(Flag::Zero);
-        }
-
-        self.registers.unset_flag(Flag::Substraction);
-        self.registers.unset_flag(Flag::HalfCarry);
+        self.registers.set_flag(Flag::Zero, reg8 == 0);
+        self.registers.set_flag(Flag::Substraction, false);
+        self.registers.set_flag(Flag::HalfCarry, false);
 
         reg8
     }
@@ -833,14 +750,9 @@ impl CPU {
     fn bit(&mut self, bit: u8, reg8: u8) {
         let reg_bit = reg8 & (1 << bit);
 
-        if reg_bit != 0 {
-            self.registers.unset_flag(Flag::Zero);
-        } else {
-            self.registers.set_flag(Flag::Zero);
-        }
-
-        self.registers.unset_flag(Flag::Substraction);
-        self.registers.set_flag(Flag::HalfCarry);
+        self.registers.set_flag(Flag::Zero, reg_bit == 0);
+        self.registers.set_flag(Flag::Substraction, false);
+        self.registers.set_flag(Flag::HalfCarry, true);
     }
 
     #[inline(always)]
@@ -883,27 +795,25 @@ impl CPU {
     fn add_sp(&mut self, value: u8) {
         let signed_operand = value.wrapping_neg() as i8 * (-1);
 
-        if self._check_if_half_carry_16(
-            self.registers.SP,
-            signed_operand as u16,
-            u16::wrapping_add,
-            true,
-        ) {
-            self.registers.set_flag(Flag::HalfCarry);
-        } else {
-            self.registers.unset_flag(Flag::HalfCarry);
-        }
+        self.registers.set_flag(
+            Flag::HalfCarry,
+            self._check_if_half_carry_16(
+                self.registers.SP,
+                signed_operand as u16,
+                u16::wrapping_add,
+                true,
+            ),
+        );
 
-        if self._check_if_carry_16(self.registers.SP, signed_operand as u16, u16::wrapping_add) {
-            self.registers.set_flag(Flag::Carry);
-        } else {
-            self.registers.unset_flag(Flag::Carry);
-        }
+        self.registers.set_flag(
+            Flag::Carry,
+            self._check_if_carry_16(self.registers.SP, signed_operand as u16, u16::wrapping_add),
+        );
 
         self.registers.SP += signed_operand as u16;
 
-        self.registers.unset_flag(Flag::Zero);
-        self.registers.unset_flag(Flag::Substraction);
+        self.registers.set_flag(Flag::Zero, false);
+        self.registers.set_flag(Flag::Substraction, false);
     }
 
     /// Load 2 bytes of data into `reg16`.
@@ -935,22 +845,13 @@ impl CPU {
     fn inc8(&mut self, value: u8) -> u8 {
         let value = value + 1;
 
-        if value == 0 {
-            self.registers.set_flag(Flag::Zero);
-        } else {
-            self.registers.unset_flag(Flag::Zero);
-        }
+        self.registers.set_flag(Flag::Zero, value == 0);
+        self.registers.set_flag(Flag::Substraction, false);
 
-        self.registers.unset_flag(Flag::Substraction);
-
-        if self._check_if_half_carry(value - 1, 1, Add::add) {
-            self.registers.set_flag(Flag::HalfCarry);
-        } else {
-            self.registers.unset_flag(Flag::HalfCarry);
-        }
-
-        // println!("New value after increasing by one: {:#04X}", value);
-        // println!("Zero flag: {}", self.registers.get_flag(Flag::Zero));
+        self.registers.set_flag(
+            Flag::HalfCarry,
+            self._check_if_half_carry(value - 1, 1, Add::add),
+        );
 
         value
     }
@@ -958,19 +859,13 @@ impl CPU {
     fn dec8(&mut self, value: u8) -> u8 {
         let value = value - 1;
 
-        if value == 0 {
-            self.registers.set_flag(Flag::Zero);
-        } else {
-            self.registers.unset_flag(Flag::Zero);
-        }
+        self.registers.set_flag(Flag::Zero, value == 0);
+        self.registers.set_flag(Flag::Substraction, true);
 
-        self.registers.set_flag(Flag::Substraction);
-
-        if self._check_if_half_carry(value + 1, 1, Sub::sub) {
-            self.registers.set_flag(Flag::HalfCarry);
-        } else {
-            self.registers.unset_flag(Flag::HalfCarry);
-        }
+        self.registers.set_flag(
+            Flag::HalfCarry,
+            self._check_if_half_carry(value + 1, 1, Sub::sub),
+        );
 
         value
     }
@@ -1067,234 +962,138 @@ impl CPU {
             }
         }
 
-        if carry {
-            self.registers.set_flag(Flag::Carry);
-        } else {
-            self.registers.unset_flag(Flag::Carry);
-        }
-
-        if half_carry {
-            self.registers.set_flag(Flag::HalfCarry);
-        } else {
-            self.registers.unset_flag(Flag::HalfCarry);
-        }
-
-        self.registers.unset_flag(Flag::Substraction);
+        self.registers.set_flag(Flag::Carry, carry);
+        self.registers.set_flag(Flag::HalfCarry, half_carry);
+        self.registers.set_flag(Flag::Substraction, false);
     }
 
     fn add_a(&mut self, value: u8) {
-        if self._check_if_half_carry(self.registers.A, value, Add::add) {
-            self.registers.set_flag(Flag::HalfCarry);
-        } else {
-            self.registers.unset_flag(Flag::HalfCarry);
-        }
+        self.registers.set_flag(
+            Flag::HalfCarry,
+            self._check_if_half_carry(self.registers.A, value, Add::add),
+        );
 
         let (result, carry) = self.registers.A.overflowing_add(value);
         self.registers.A = result;
 
-        if self.registers.A == 0 {
-            self.registers.set_flag(Flag::Zero);
-        } else {
-            self.registers.unset_flag(Flag::Zero);
-        }
-
-        if carry {
-            self.registers.set_flag(Flag::Carry);
-        } else {
-            self.registers.unset_flag(Flag::Carry);
-        }
-
-        self.registers.unset_flag(Flag::Substraction);
+        self.registers.set_flag(Flag::Zero, self.registers.A == 0);
+        self.registers.set_flag(Flag::Carry, carry);
+        self.registers.set_flag(Flag::Substraction, false);
     }
 
     // TODO: better half-carry for three components
     fn adc_a(&mut self, value: u8) {
-        // let adc_value = value + (self.registers.get_flag(Flag::Carry) as u8);
-        // self.add_a(adc_value);
+        let carry_bit = self.registers.get_flag(Flag::Carry) as u8;
 
-        if ((self.registers.A & 0xF) + (value & 0xF) + (self.registers.get_flag(Flag::Carry) as u8))
-            & 0x10
-            == 0x10
-        {
-            self.registers.set_flag(Flag::HalfCarry);
-        } else {
-            self.registers.unset_flag(Flag::HalfCarry);
-        }
+        self.registers.set_flag(
+            Flag::HalfCarry,
+            ((self.registers.A & 0xF) + (value & 0xF) + carry_bit) & 0x10 == 0x10,
+        );
 
         let (intermediate_result, c1) = self.registers.A.overflowing_add(value);
-        let (result, c2) =
-            intermediate_result.overflowing_add(self.registers.get_flag(Flag::Carry) as u8);
+        let (result, c2) = intermediate_result.overflowing_add(carry_bit);
 
         self.registers.A = result;
 
-        if self.registers.A == 0 {
-            self.registers.set_flag(Flag::Zero);
-        } else {
-            self.registers.unset_flag(Flag::Zero);
-        }
-
-        if c1 || c2 {
-            self.registers.set_flag(Flag::Carry);
-        } else {
-            self.registers.unset_flag(Flag::Carry);
-        }
-
-        self.registers.unset_flag(Flag::Substraction);
+        self.registers.set_flag(Flag::Zero, self.registers.A == 0);
+        self.registers.set_flag(Flag::Carry, c1 || c2);
+        self.registers.set_flag(Flag::Substraction, false);
     }
 
     fn sub_a(&mut self, value: u8) {
-        if self._check_if_half_carry(self.registers.A, value, Sub::sub) {
-            self.registers.set_flag(Flag::HalfCarry);
-        } else {
-            self.registers.unset_flag(Flag::HalfCarry);
-        }
+        self.registers.set_flag(
+            Flag::HalfCarry,
+            self._check_if_half_carry(self.registers.A, value, Sub::sub),
+        );
 
         let (result, carry) = self.registers.A.overflowing_sub(value);
         self.registers.A = result;
 
-        if self.registers.A == 0 {
-            self.registers.set_flag(Flag::Zero);
-        } else {
-            self.registers.unset_flag(Flag::Zero);
-        }
-
-        if carry {
-            self.registers.set_flag(Flag::Carry);
-        } else {
-            self.registers.unset_flag(Flag::Carry);
-        }
-
-        self.registers.set_flag(Flag::Substraction);
+        self.registers.set_flag(Flag::Zero, self.registers.A == 0);
+        self.registers.set_flag(Flag::Carry, carry);
+        self.registers.set_flag(Flag::Substraction, true);
     }
 
     fn sbc_a(&mut self, value: u8) {
-        // let sbc_value = value + (self.registers.get_flag(Flag::Carry) as u8);
+        let carry_bit = self.registers.get_flag(Flag::Carry) as u8;
 
-        if ((self.registers.A & 0xF) - (value & 0xF) - (self.registers.get_flag(Flag::Carry) as u8))
-            & 0x10
-            == 0x10
-        {
-            self.registers.set_flag(Flag::HalfCarry);
-        } else {
-            self.registers.unset_flag(Flag::HalfCarry);
-        }
+        self.registers.set_flag(
+            Flag::HalfCarry,
+            ((self.registers.A & 0xF) - (value & 0xF) - carry_bit) & 0x10 == 0x10,
+        );
 
         let (intermediate_result, c1) = self.registers.A.overflowing_sub(value);
-        let (result, c2) =
-            intermediate_result.overflowing_sub(self.registers.get_flag(Flag::Carry) as u8);
+        let (result, c2) = intermediate_result.overflowing_sub(carry_bit);
+
         self.registers.A = result;
 
-        if self.registers.A == 0 {
-            self.registers.set_flag(Flag::Zero);
-        } else {
-            self.registers.unset_flag(Flag::Zero);
-        }
-
-        if c1 || c2 {
-            self.registers.set_flag(Flag::Carry);
-        } else {
-            self.registers.unset_flag(Flag::Carry);
-        }
-
-        self.registers.set_flag(Flag::Substraction);
+        self.registers.set_flag(Flag::Zero, self.registers.A == 0);
+        self.registers.set_flag(Flag::Carry, c1 || c2);
+        self.registers.set_flag(Flag::Substraction, true);
     }
 
     fn and_a(&mut self, value: u8) {
         self.registers.A &= value;
 
-        if self.registers.A == 0 {
-            self.registers.set_flag(Flag::Zero);
-        } else {
-            self.registers.unset_flag(Flag::Zero);
-        }
-
-        self.registers.unset_flag(Flag::Substraction);
-        self.registers.set_flag(Flag::HalfCarry);
-        self.registers.unset_flag(Flag::Carry);
+        self.registers.set_flag(Flag::Zero, self.registers.A == 0);
+        self.registers.set_flag(Flag::Substraction, false);
+        self.registers.set_flag(Flag::HalfCarry, true);
+        self.registers.set_flag(Flag::Carry, false);
     }
 
     fn xor_a(&mut self, value: u8) {
         self.registers.A ^= value;
 
-        if self.registers.A == 0 {
-            self.registers.set_flag(Flag::Zero);
-        } else {
-            self.registers.unset_flag(Flag::Zero);
-        }
-
-        self.registers.unset_flag(Flag::Substraction);
-        self.registers.unset_flag(Flag::HalfCarry);
-        self.registers.unset_flag(Flag::Carry);
+        self.registers.set_flag(Flag::Zero, self.registers.A == 0);
+        self.registers.set_flag(Flag::Substraction, false);
+        self.registers.set_flag(Flag::HalfCarry, false);
+        self.registers.set_flag(Flag::Carry, false);
     }
 
     fn or_a(&mut self, value: u8) {
         self.registers.A |= value;
-        // println!("Register A after ORING with {:#04X}: {:#04X}", value, self.registers.A);
 
-        if self.registers.A == 0 {
-            self.registers.set_flag(Flag::Zero);
-        } else {
-            self.registers.unset_flag(Flag::Zero);
-        }
-
-        self.registers.unset_flag(Flag::Substraction);
-        self.registers.unset_flag(Flag::HalfCarry);
-        self.registers.unset_flag(Flag::Carry);
+        self.registers.set_flag(Flag::Zero, self.registers.A == 0);
+        self.registers.set_flag(Flag::Substraction, false);
+        self.registers.set_flag(Flag::HalfCarry, false);
+        self.registers.set_flag(Flag::Carry, false);
     }
 
     fn cp_a(&mut self, value: u8) {
-        if self._check_if_half_carry(self.registers.A, value, Sub::sub) {
-            self.registers.set_flag(Flag::HalfCarry);
-        } else {
-            self.registers.unset_flag(Flag::HalfCarry);
-        }
+        self.registers.set_flag(
+            Flag::HalfCarry,
+            self._check_if_half_carry(self.registers.A, value, Sub::sub),
+        );
 
         let (result, carry) = self.registers.A.overflowing_sub(value);
-        // println!("CP: A = {:#04X}, value = {:#04X}", self.registers.A, value);
 
         // A and value are equal
-        if result == 0 {
-            self.registers.set_flag(Flag::Zero);
-        } else {
-            self.registers.unset_flag(Flag::Zero);
-        }
-
-        if carry {
-            self.registers.set_flag(Flag::Carry);
-        } else {
-            self.registers.unset_flag(Flag::Carry);
-        }
-
-        self.registers.set_flag(Flag::Substraction);
+        self.registers.set_flag(Flag::Zero, result == 0);
+        self.registers.set_flag(Flag::Carry, carry);
+        self.registers.set_flag(Flag::Substraction, true);
     }
 
     fn cpl_a(&mut self) {
         self.registers.A = !self.registers.A;
-        self.registers.set_flag(Flag::Substraction);
-        self.registers.set_flag(Flag::HalfCarry);
+        self.registers.set_flag(Flag::Substraction, true);
+        self.registers.set_flag(Flag::HalfCarry, true);
     }
 
     fn ccf(&mut self) {
         self.registers.F ^= 1 << 4;
-        self.registers.unset_flag(Flag::Substraction);
-        self.registers.unset_flag(Flag::HalfCarry);
+        self.registers.set_flag(Flag::Substraction, false);
+        self.registers.set_flag(Flag::HalfCarry, false);
     }
 
     fn scf(&mut self) {
-        self.registers.set_flag(Flag::Carry);
+        self.registers.set_flag(Flag::Carry, true);
 
-        self.registers.unset_flag(Flag::Substraction);
-        self.registers.unset_flag(Flag::HalfCarry);
+        self.registers.set_flag(Flag::Substraction, false);
+        self.registers.set_flag(Flag::HalfCarry, false);
     }
 
     fn jr(&mut self, value: u8) {
-        // FIXME:
-        // println!("value as u8: {:#04X}", value);
-
         let value = value.wrapping_neg() as i8 * (-1);
-        // dbg!(value);
-        // dbg!(value as u16);
-
         self.registers.PC = self.registers.PC.wrapping_add(value as u16);
     }
 
@@ -1307,17 +1106,14 @@ impl CPU {
     }
 
     fn rlca(&mut self) {
-        if self.registers.A & (1 << 7) == 0 {
-            self.registers.unset_flag(Flag::Carry);
-        } else {
-            self.registers.set_flag(Flag::Carry);
-        }
+        self.registers
+            .set_flag(Flag::Carry, self.registers.A & (1 << 7) != 0);
 
         self.registers.A = self.registers.A.rotate_left(1);
 
-        self.registers.unset_flag(Flag::Zero);
-        self.registers.unset_flag(Flag::Substraction);
-        self.registers.unset_flag(Flag::HalfCarry);
+        self.registers.set_flag(Flag::Zero, false);
+        self.registers.set_flag(Flag::Substraction, false);
+        self.registers.set_flag(Flag::HalfCarry, false);
     }
 
     fn rla(&mut self) {
@@ -1330,15 +1126,10 @@ impl CPU {
             self.registers.A &= !(1);
         }
 
-        if bit7 != 0 {
-            self.registers.set_flag(Flag::Carry);
-        } else {
-            self.registers.unset_flag(Flag::Carry);
-        }
-
-        self.registers.unset_flag(Flag::Zero);
-        self.registers.unset_flag(Flag::Substraction);
-        self.registers.unset_flag(Flag::HalfCarry);
+        self.registers.set_flag(Flag::Carry, bit7 != 0);
+        self.registers.set_flag(Flag::Zero, false);
+        self.registers.set_flag(Flag::Substraction, false);
+        self.registers.set_flag(Flag::HalfCarry, false);
     }
 
     // TODO: different cycle counts
@@ -1348,8 +1139,6 @@ impl CPU {
     ///
     /// Returns the m-cycles it took depending on the condition
     fn jr_flag(&mut self, flag: Flag, value: u8, condition: bool) -> u8 {
-        // println!("Flag: {:?} is {}, condition: {}", flag.clone(), self.registers.get_flag(flag.clone()), condition);
-
         if self.registers.get_flag(flag) == condition {
             self.jr(value);
             return 3;
@@ -1359,17 +1148,14 @@ impl CPU {
     }
 
     fn rrca(&mut self) {
-        if self.registers.A & 0b1 == 0 {
-            self.registers.unset_flag(Flag::Carry);
-        } else {
-            self.registers.set_flag(Flag::Carry);
-        }
+        self.registers
+            .set_flag(Flag::Carry, self.registers.A & 0b1 != 0);
 
         self.registers.A = self.registers.A.rotate_right(1);
 
-        self.registers.unset_flag(Flag::Zero);
-        self.registers.unset_flag(Flag::Substraction);
-        self.registers.unset_flag(Flag::HalfCarry);
+        self.registers.set_flag(Flag::Zero, false);
+        self.registers.set_flag(Flag::Substraction, false);
+        self.registers.set_flag(Flag::HalfCarry, false);
     }
 
     fn rra(&mut self) {
@@ -1382,15 +1168,10 @@ impl CPU {
             self.registers.A &= !(1 << 7);
         }
 
-        if bit0 != 0 {
-            self.registers.set_flag(Flag::Carry);
-        } else {
-            self.registers.unset_flag(Flag::Carry);
-        }
-
-        self.registers.unset_flag(Flag::Zero);
-        self.registers.unset_flag(Flag::Substraction);
-        self.registers.unset_flag(Flag::HalfCarry);
+        self.registers.set_flag(Flag::Carry, bit0 != 0);
+        self.registers.set_flag(Flag::Zero, false);
+        self.registers.set_flag(Flag::Substraction, false);
+        self.registers.set_flag(Flag::HalfCarry, false);
     }
 
     /// Turn register A into a binary-coded decimal (BCD)
@@ -1407,24 +1188,18 @@ impl CPU {
         } else {
             if self.registers.get_flag(Flag::Carry) || self.registers.A > 0x99 {
                 self.registers.A += 0x60;
-                self.registers.set_flag(Flag::Carry);
+                self.registers.set_flag(Flag::Carry, true);
             }
             if self.registers.get_flag(Flag::HalfCarry) || (self.registers.A & 0x0F) > 0x09 {
                 self.registers.A += 0x6;
             }
         }
 
-        if self.registers.A == 0 {
-            self.registers.set_flag(Flag::Zero);
-        } else {
-            self.registers.unset_flag(Flag::Zero);
-        }
-
-        self.registers.unset_flag(Flag::HalfCarry);
+        self.registers.set_flag(Flag::Zero, self.registers.A == 0);
+        self.registers.set_flag(Flag::HalfCarry, false);
     }
 
     fn jp(&mut self, value: u16) {
-        // println!("JUMPING TO: {:#06X}", value);
         self.registers.PC = value;
     }
 
@@ -1509,8 +1284,6 @@ impl CPU {
         bus.write_byte(self.registers.SP, ((self.registers.PC) >> 8) as u8);
         self.registers.SP -= 1;
         bus.write_byte(self.registers.SP, self.registers.PC as u8);
-
-        // println!("SP: {:#08X}", bus.read_16(self.registers.SP));
 
         self.registers.PC = value;
     }

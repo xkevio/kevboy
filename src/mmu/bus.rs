@@ -1,7 +1,7 @@
 use crate::mmu::timer::Timers;
 
 pub struct Bus {
-    memory: [u8; 0xFFFF + 1],
+    memory: [u8; 0xFFFF + 1], // one memory array not ideal
     pub timer: Timers,
 }
 

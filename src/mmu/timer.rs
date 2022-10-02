@@ -50,7 +50,7 @@ impl Timers {
             1 => self.div & (1 << 3),
             2 => self.div & (1 << 5),
             3 => self.div & (1 << 7),
-            _ => panic!("Invalid TAC frequency!")
+            _ => panic!("Invalid TAC frequency!"),
         }
     }
 
