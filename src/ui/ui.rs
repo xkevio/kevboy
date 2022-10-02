@@ -88,9 +88,7 @@ impl<'a> App for Kevboy<'a> {
                             .show(ui, |ui| {
                                 ui.add(TextEdit::multiline(&mut "AF:\nBC:\nDE:\nHL:\n\nSP:\nPC:"));
                                 ui.label("Flags:");
-                                ui.add(TextEdit::multiline(
-                                    &mut "Z\t\tN\t\tH\t\tC\n",
-                                ));
+                                ui.add(TextEdit::multiline(&mut "Z\t\tN\t\tH\t\tC\n"));
                             });
                     });
 
