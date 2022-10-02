@@ -6,11 +6,11 @@ use crate::{
     mmu::bus::Bus,
 };
 
+use std::io::Write;
 use std::{
     io::StdoutLock,
     ops::{Add, Sub},
 };
-use std::io::Write;
 
 macro_rules! reg8 {
     ($self:ident, $bits:expr, $bus:ident) => {
@@ -49,9 +49,9 @@ impl CPU {
 
     // returns m-cycles for now
     #[rustfmt::skip]
-    pub fn tick(&mut self, bus: &mut Bus, lock: &mut StdoutLock) -> u8 {
+    pub fn tick(&mut self, bus: &mut Bus, _lock: &mut StdoutLock) -> u8 {
         if self.halt {
-            return 0;
+            return 1;
         }
 
         // ei() is delayed by one instruction
@@ -68,15 +68,21 @@ impl CPU {
         //     INSTRUCTIONS[opcode as usize].name
         // };
 
-        let mem0 = bus.read_byte(self.registers.PC - 1);
-        let mem1 = bus.read_byte(self.registers.PC);
-        let mem2 = bus.read_byte(self.registers.PC + 1);
-        let mem3 = bus.read_byte(self.registers.PC + 2);
+        // let mem0 = bus.read_byte(self.registers.PC - 1);
+        // let mem1 = bus.read_byte(self.registers.PC);
+        // let mem2 = bus.read_byte(self.registers.PC + 1);
+        // let mem3 = bus.read_byte(self.registers.PC + 2);
 
 
-        writeln!(lock, "A: {:02X} F: {:02X} B: {:02X} C: {:02X} D: {:02X} E: {:02X} H: {:02X} L: {:02X} SP: {:04X} PC: 00:{:04X} ({:02X} {:02X} {:02X} {:02X})",
-                self.registers.A, self.registers.F, self.registers.B, self.registers.C, self.registers.D, self.registers.E, 
-                self.registers.H, self.registers.L, self.registers.SP, self.registers.PC - 1, mem0, mem1, mem2, mem3).unwrap();
+        // writeln!(lock, "A: {:02X} F: {:02X} B: {:02X} C: {:02X} D: {:02X} E: {:02X} H: {:02X} L: {:02X} SP: {:04X} PC: 00:{:04X} ({:02X} {:02X} {:02X} {:02X})",
+        //         self.registers.A, self.registers.F, self.registers.B, self.registers.C, self.registers.D, self.registers.E, 
+        //         self.registers.H, self.registers.L, self.registers.SP, self.registers.PC - 1, mem0, mem1, mem2, mem3).unwrap();
+
+        // writeln!(lock, "DIV: {}, TIMA: {}, TAC: {:#04X}, {}", bus.timer.div, bus.timer.tima, bus.timer.tac, op_mnemonic).unwrap();
+
+        // writeln!(_lock, "A: {:02X} B: {:02X} C: {:02X} D: {:02X} E: {:02X} H: {:02X} L: {:02X}",
+        //         self.registers.A, self.registers.B, self.registers.C, self.registers.D, self.registers.E, 
+        //         self.registers.H, self.registers.L).unwrap();
 
         if opcode == 0xCB {
             let cb_opcode = self.fetch_operand(bus);
@@ -767,7 +773,7 @@ impl CPU {
         }
 
         let bit7 = reg8 & (1 << 7);
-        let reg8 = if bit7 == 0 { 
+        let reg8 = if bit7 == 0 {
             reg8 >> 1
         } else {
             (reg8 >> 1) | (1 << 7)
@@ -1106,15 +1112,18 @@ impl CPU {
         // let adc_value = value + (self.registers.get_flag(Flag::Carry) as u8);
         // self.add_a(adc_value);
 
-        if ((self.registers.A & 0xF) + (value & 0xF) + (self.registers.get_flag(Flag::Carry) as u8)) & 0x10 == 0x10 {
+        if ((self.registers.A & 0xF) + (value & 0xF) + (self.registers.get_flag(Flag::Carry) as u8))
+            & 0x10
+            == 0x10
+        {
             self.registers.set_flag(Flag::HalfCarry);
         } else {
             self.registers.unset_flag(Flag::HalfCarry);
         }
 
-
         let (intermediate_result, c1) = self.registers.A.overflowing_add(value);
-        let (result, c2) = intermediate_result.overflowing_add(self.registers.get_flag(Flag::Carry) as u8);
+        let (result, c2) =
+            intermediate_result.overflowing_add(self.registers.get_flag(Flag::Carry) as u8);
 
         self.registers.A = result;
 
@@ -1161,14 +1170,18 @@ impl CPU {
     fn sbc_a(&mut self, value: u8) {
         // let sbc_value = value + (self.registers.get_flag(Flag::Carry) as u8);
 
-        if ((self.registers.A & 0xF) - (value & 0xF) - (self.registers.get_flag(Flag::Carry) as u8)) & 0x10 == 0x10 {
+        if ((self.registers.A & 0xF) - (value & 0xF) - (self.registers.get_flag(Flag::Carry) as u8))
+            & 0x10
+            == 0x10
+        {
             self.registers.set_flag(Flag::HalfCarry);
         } else {
             self.registers.unset_flag(Flag::HalfCarry);
         }
 
         let (intermediate_result, c1) = self.registers.A.overflowing_sub(value);
-        let (result, c2) = intermediate_result.overflowing_sub(self.registers.get_flag(Flag::Carry) as u8);
+        let (result, c2) =
+            intermediate_result.overflowing_sub(self.registers.get_flag(Flag::Carry) as u8);
         self.registers.A = result;
 
         if self.registers.A == 0 {
@@ -1538,7 +1551,7 @@ impl CPU {
     }
 
     fn reti(&mut self, bus: &Bus) {
-        self.ei();
+        self.ime = true;
         self.ret(bus);
     }
 

@@ -4,6 +4,7 @@ pub struct Timers {
     pub tma: u8,
     pub tac: u8,
     pub if_fired: u8,
+    cycles_tima: u16,
 }
 
 impl Timers {
@@ -14,20 +15,46 @@ impl Timers {
             tma: 0,
             tac: 0xF8,
             if_fired: 0,
+            cycles_tima: 0,
         }
     }
 
-    pub fn tick(&mut self, m_cycles: u64) {
-        if m_cycles % 64 == 0 {
+    pub fn tick(&mut self, _m_cycles: u64, cycles_tima: u16) {
+        self.cycles_tima += cycles_tima;
+
+        // increase each clock (t-cycle)
+        for _ in 0..4 {
             self.tick_div();
         }
 
-        if m_cycles % self.get_tima_frequency() as u64 == 0 {
+        if self.cycles_tima % self.get_tima_frequency() == 0 {
+            for _ in 0..(self.cycles_tima / self.get_tima_frequency()) {
+                self.tick_tima();
+                self.cycles_tima = 0;
+            }
+        }
+    }
+
+    pub fn reset_div(&mut self) {
+        self.div = 0;
+
+        // write to DIV can increase TIMA (doesn't work yet)
+        if self.get_sys_counter_bit(self.tac & 0b11) == 0 {
             self.tick_tima();
         }
     }
 
-    /// Should be called every 64 m-cycles
+    fn get_sys_counter_bit(&self, tac_frequency: u8) -> u16 {
+        match tac_frequency {
+            0 => self.div & (1 << 9),
+            1 => self.div & (1 << 3),
+            2 => self.div & (1 << 5),
+            3 => self.div & (1 << 7),
+            _ => panic!("Invalid TAC frequency!")
+        }
+    }
+
+    /// Upper bits increase every 64 m-cycles
     fn tick_div(&mut self) {
         self.div += 1;
     }
@@ -38,7 +65,7 @@ impl Timers {
             let (result, overflow) = self.tima.overflowing_add(1);
 
             if overflow {
-                self.tima = self.tma;
+                self.tima = 0x00; // set to tma next cycle
                 self.if_fired = 0b100;
             } else {
                 self.tima = result;

@@ -1,5 +1,7 @@
 01-special: Passed
 
+02-interrupts: Passed
+
 03-op sp,hl: Passed
 
 04-op r,imm: Passed

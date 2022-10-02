@@ -18,14 +18,18 @@ impl Bus {
         }
     }
 
-    pub fn tick(&mut self, m_cycles: u64) {
-        self.timer.tick(m_cycles);
+    pub fn tick(&mut self, m_cycles: u64, cycles_passed: u16) {
+        if self.timer.if_fired != 0 {
+            self.memory[0xFF0F] |= self.timer.if_fired;
+            self.timer.if_fired = 0;
+
+            self.timer.tima = self.timer.tma;
+        }
+
+        self.timer.tick(m_cycles, cycles_passed);
 
         self.memory[0xFF04] = (self.timer.div >> 8) as u8;
         self.memory[0xFF05] = self.timer.tima;
-
-        self.memory[0xFF0F] |= self.timer.if_fired;
-        self.timer.if_fired = 0;
     }
 
     pub fn read_16(&self, address: u16) -> u16 {
@@ -70,7 +74,7 @@ impl Bus {
                     0xFF04 => {
                         // DIV register: any write resets it to 0
                         self.memory[address as usize] = 0;
-                        self.timer.div = 0;
+                        self.timer.reset_div();
                     }
                     0xFF05 => {
                         self.memory[address as usize] = byte;
