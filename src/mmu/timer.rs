@@ -27,11 +27,9 @@ impl Timers {
             self.tick_div();
         }
 
-        if self.cycles_tima % self.get_tima_frequency() == 0 {
-            for _ in 0..(self.cycles_tima / self.get_tima_frequency()) {
-                self.tick_tima();
-                self.cycles_tima = 0;
-            }
+        while self.cycles_tima >= self.get_tima_frequency() {
+            self.tick_tima();
+            self.cycles_tima -= self.get_tima_frequency();
         }
     }
 

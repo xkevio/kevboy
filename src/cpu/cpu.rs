@@ -435,10 +435,6 @@ impl CPU {
                 0x37 => { self.scf(); 1 }
                 0x3F => { self.ccf(); 1 }
                 0x40..=0x7F => {
-                    if opcode == 0x40 {
-                        println!("LD B, B");
-                    }
-
                     let dest = (opcode >> 3) & 0b111;
                     let source = opcode & 0b111;
 
