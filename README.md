@@ -19,3 +19,7 @@
 10-bit ops: Passed
 
 11-op a,(hl): Passed
+
+instr_timing: Passed
+
+mem_timing-{1,2}: Passed

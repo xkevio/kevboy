@@ -1,7 +1,7 @@
 use crate::mmu::timer::Timers;
 
 pub struct Bus {
-    memory: [u8; 0xFFFF + 1], // one memory array not ideal
+    pub memory: [u8; 0xFFFF + 1], // one memory array not ideal
     pub timer: Timers,
 }
 
@@ -18,7 +18,7 @@ impl Bus {
         }
     }
 
-    pub fn tick(&mut self, m_cycles: u64, cycles_passed: u16) {
+    pub fn tick(&mut self, cycles_passed: u16) {
         if self.timer.if_fired != 0 {
             self.memory[0xFF0F] |= self.timer.if_fired;
             self.timer.if_fired = 0;
@@ -26,13 +26,13 @@ impl Bus {
             self.timer.tima = self.timer.tma;
         }
 
-        self.timer.tick(m_cycles, cycles_passed);
+        self.timer.tick(cycles_passed);
 
         self.memory[0xFF04] = (self.timer.div >> 8) as u8;
         self.memory[0xFF05] = self.timer.tima;
     }
 
-    pub fn read_16(&self, address: u16) -> u16 {
+    pub fn read_16(&mut self, address: u16) -> u16 {
         let lower_byte = self.read_byte(address);
         let higher_byte = self.read_byte(address + 1);
 
@@ -46,11 +46,13 @@ impl Bus {
         self.write_byte(address + 1, bytes[1]);
     }
 
-    pub fn read_byte(&self, address: u16) -> u8 {
+    pub fn read_byte(&mut self, address: u16) -> u8 {
+        self.tick(1);
         self.memory[address as usize]
     }
 
     pub fn write_byte(&mut self, address: u16, byte: u8) {
+        self.tick(1);
         match address {
             0x0000..=0x7FFF => println!("write to Read-Only-Memory, ignore for now"),
             0x8000..=0x9FFF => {
@@ -58,7 +60,7 @@ impl Bus {
                 self.memory[address as usize] = byte;
             }
             0xA000..=0xBFFF => {
-                println!("External RAM access to {:#08X}", address);
+                // println!("External RAM access to {:#08X}", address);
                 self.memory[address as usize] = byte;
             }
             0xC000..=0xDFFF => {
@@ -107,6 +109,7 @@ impl Bus {
     }
 }
 
+// TODO
 fn initialize_internal_registers(memory: &mut [u8]) {
     memory[0xFF40] = 0x91;
     memory[0xFF07] = 0xF8;

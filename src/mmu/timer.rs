@@ -19,11 +19,11 @@ impl Timers {
         }
     }
 
-    pub fn tick(&mut self, _m_cycles: u64, cycles_tima: u16) {
+    pub fn tick(&mut self, cycles_tima: u16) {
         self.cycles_tima += cycles_tima;
 
         // increase each clock (t-cycle)
-        for _ in 0..4 {
+        for _ in 0..(cycles_tima * 4) {
             self.tick_div();
         }
 
@@ -37,9 +37,9 @@ impl Timers {
         self.div = 0;
 
         // write to DIV can increase TIMA (doesn't work yet)
-        if self.get_sys_counter_bit(self.tac & 0b11) == 0 {
-            self.tick_tima();
-        }
+        // if self.get_sys_counter_bit(self.tac & 0b11) == 0 {
+        //     self.tick_tima();
+        // }
     }
 
     fn get_sys_counter_bit(&self, tac_frequency: u8) -> u16 {

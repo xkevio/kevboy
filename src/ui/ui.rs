@@ -1,11 +1,12 @@
 use std::{
-    io::StdoutLock,
     time::{Duration, Instant},
 };
 
 use eframe::{
-    egui::{menu, CentralPanel, CollapsingHeader, TextEdit, TextStyle, TopBottomPanel, Window},
-    epaint::ColorImage,
+    egui::{
+        menu, CentralPanel, CollapsingHeader, RichText, TextEdit, TextStyle, TopBottomPanel, Window,
+    },
+    epaint::{Color32, ColorImage},
     App,
 };
 use egui_extras::RetainedImage;
@@ -19,7 +20,6 @@ pub struct Kevboy<'a> {
     cy_count: u16,
     mem_viewer: MemoryViewer<'a>,
     is_memory_window_open: bool,
-    lock: StdoutLock<'a>,
 }
 
 impl<'a> Default for Kevboy<'a> {
@@ -29,7 +29,6 @@ impl<'a> Default for Kevboy<'a> {
             cy_count: 0,
             mem_viewer: MemoryViewer::new(TEST_ROM, true),
             is_memory_window_open: false,
-            lock: std::io::stdout().lock(), // temporary, for slightly faster logging
         }
     }
 }
@@ -86,9 +85,19 @@ impl<'a> App for Kevboy<'a> {
                         CollapsingHeader::new("Registers")
                             .default_open(true)
                             .show(ui, |ui| {
-                                ui.add(TextEdit::multiline(&mut "AF:\nBC:\nDE:\nHL:\n\nSP:\nPC:"));
-                                ui.label("Flags:");
-                                ui.add(TextEdit::multiline(&mut "Z\t\tN\t\tH\t\tC\n"));
+                                ui.label(
+                                    RichText::new("AF:\nBC:\nDE:\nHL:\n\nSP:\nPC:")
+                                        .strong()
+                                        .monospace()
+                                        .color(Color32::GRAY),
+                                );
+                                ui.label("\nFlags:\n");
+                                ui.label(
+                                    RichText::new("Z\t\tN\t\tH\t\tC\n")
+                                        .strong()
+                                        .monospace()
+                                        .color(Color32::GRAY),
+                                );
                             });
                     });
 
@@ -106,16 +115,17 @@ impl<'a> App for Kevboy<'a> {
             });
         });
 
-        // can't be closed yet, WIP
         if self.is_memory_window_open {
-            Window::new("Memory").open(&mut true).show(ctx, |ui| {
-                self.mem_viewer.show(ui);
-            });
+            Window::new("Memory")
+                .open(&mut self.is_memory_window_open)
+                .show(ctx, |ui| {
+                    self.mem_viewer.show(ui);
+                });
         }
 
         // println!("{:?}", Instant::now());
         while self.cy_count < 17_476 {
-            self.cy_count += self.emulator.step(&mut self.lock) as u16;
+            self.cy_count += self.emulator.step() as u16;
         }
 
         let start = Instant::now();

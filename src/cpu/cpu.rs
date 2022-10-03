@@ -3,9 +3,7 @@ use crate::{
     mmu::bus::Bus,
 };
 
-// use std::io::Write;
 use std::{
-    io::StdoutLock,
     ops::{Add, Sub},
 };
 
@@ -46,8 +44,9 @@ impl CPU {
 
     // returns m-cycles for now
     #[rustfmt::skip]
-    pub fn tick(&mut self, bus: &mut Bus, _lock: &mut StdoutLock) -> u8 {
+    pub fn tick(&mut self, bus: &mut Bus) -> u8 {
         if self.halt {
+            bus.tick(1);
             return 1;
         }
 
@@ -58,28 +57,6 @@ impl CPU {
         }
 
         let opcode = self.fetch_operand(bus);
-
-        // let op_mnemonic = if opcode == 0xCB {
-        //     CB_INSTRUCTIONS[bus.read_byte(self.registers.PC) as usize].name
-        // } else {
-        //     INSTRUCTIONS[opcode as usize].name
-        // };
-
-        // let mem0 = bus.read_byte(self.registers.PC - 1);
-        // let mem1 = bus.read_byte(self.registers.PC);
-        // let mem2 = bus.read_byte(self.registers.PC + 1);
-        // let mem3 = bus.read_byte(self.registers.PC + 2);
-
-
-        // writeln!(lock, "A: {:02X} F: {:02X} B: {:02X} C: {:02X} D: {:02X} E: {:02X} H: {:02X} L: {:02X} SP: {:04X} PC: 00:{:04X} ({:02X} {:02X} {:02X} {:02X})",
-        //         self.registers.A, self.registers.F, self.registers.B, self.registers.C, self.registers.D, self.registers.E, 
-        //         self.registers.H, self.registers.L, self.registers.SP, self.registers.PC - 1, mem0, mem1, mem2, mem3).unwrap();
-
-        // writeln!(lock, "DIV: {}, TIMA: {}, TAC: {:#04X}, {}", bus.timer.div, bus.timer.tima, bus.timer.tac, op_mnemonic).unwrap();
-
-        // writeln!(_lock, "A: {:02X} B: {:02X} C: {:02X} D: {:02X} E: {:02X} H: {:02X} L: {:02X}",
-        //         self.registers.A, self.registers.B, self.registers.C, self.registers.D, self.registers.E, 
-        //         self.registers.H, self.registers.L).unwrap();
 
         if opcode == 0xCB {
             let cb_opcode = self.fetch_operand(bus);
@@ -92,9 +69,10 @@ impl CPU {
                 0x04 => { self.registers.H = self.rlc(self.registers.H); 2 }
                 0x05 => { self.registers.L = self.rlc(self.registers.L); 2 }
                 0x06 => {
+                    let hl_byte = bus.read_byte(self.registers.get_hl());
                     bus.write_byte(
                         self.registers.get_hl(),
-                        self.rlc(bus.read_byte(self.registers.get_hl())),
+                        self.rlc(hl_byte),
                     );
                     4
                 }
@@ -106,9 +84,10 @@ impl CPU {
                 0x0C => { self.registers.H = self.rrc(self.registers.H); 2 }
                 0x0D => { self.registers.L = self.rrc(self.registers.L); 2 }
                 0x0E => {
+                    let hl_byte = bus.read_byte(self.registers.get_hl());
                     bus.write_byte(
                         self.registers.get_hl(),
-                        self.rrc(bus.read_byte(self.registers.get_hl())),
+                        self.rrc(hl_byte),
                     );
                     4
                 }
@@ -120,9 +99,10 @@ impl CPU {
                 0x14 => { self.registers.H = self.rl(self.registers.H); 2 }
                 0x15 => { self.registers.L = self.rl(self.registers.L); 2 }
                 0x16 => {
+                    let hl_byte = bus.read_byte(self.registers.get_hl());
                     bus.write_byte(
                         self.registers.get_hl(),
-                        self.rl(bus.read_byte(self.registers.get_hl())),
+                        self.rl(hl_byte),
                     );
                     4
                 }
@@ -134,9 +114,10 @@ impl CPU {
                 0x1C => { self.registers.H = self.rr(self.registers.H); 2 }
                 0x1D => { self.registers.L = self.rr(self.registers.L); 2 }
                 0x1E => {
+                    let hl_byte = bus.read_byte(self.registers.get_hl());
                     bus.write_byte(
                         self.registers.get_hl(),
-                        self.rr(bus.read_byte(self.registers.get_hl())),
+                        self.rr(hl_byte),
                     );
                     4
                 }
@@ -148,9 +129,10 @@ impl CPU {
                 0x24 => { self.registers.H = self.sla(self.registers.H); 2 }
                 0x25 => { self.registers.L = self.sla(self.registers.L); 2 }
                 0x26 => {
+                    let hl_byte = bus.read_byte(self.registers.get_hl());
                     bus.write_byte(
                         self.registers.get_hl(),
-                        self.sla(bus.read_byte(self.registers.get_hl())),
+                        self.sla(hl_byte),
                     );
                     4
                 }
@@ -162,9 +144,10 @@ impl CPU {
                 0x2C => { self.registers.H = self.sra(self.registers.H); 2 }
                 0x2D => { self.registers.L = self.sra(self.registers.L); 2 }
                 0x2E => {
+                    let hl_byte = bus.read_byte(self.registers.get_hl());
                     bus.write_byte(
                         self.registers.get_hl(),
-                        self.sra(bus.read_byte(self.registers.get_hl())),
+                        self.sra(hl_byte),
                     );
                     4
                 }
@@ -176,9 +159,10 @@ impl CPU {
                 0x34 => { self.registers.H = self.swap(self.registers.H); 2 }
                 0x35 => { self.registers.L = self.swap(self.registers.L); 2 }
                 0x36 => {
+                    let hl_byte = bus.read_byte(self.registers.get_hl());
                     bus.write_byte(
                         self.registers.get_hl(),
-                        self.swap(bus.read_byte(self.registers.get_hl())),
+                        self.swap(hl_byte),
                     );
                     4
                 }
@@ -190,9 +174,10 @@ impl CPU {
                 0x3C => { self.registers.H = self.srl(self.registers.H); 2 }
                 0x3D => { self.registers.L = self.srl(self.registers.L); 2 }
                 0x3E => {
+                    let hl_byte = bus.read_byte(self.registers.get_hl());
                     bus.write_byte(
                         self.registers.get_hl(),
-                        self.srl(bus.read_byte(self.registers.get_hl())),
+                        self.srl(hl_byte),
                     );
                     4
                 }
@@ -222,9 +207,10 @@ impl CPU {
                         4 => { self.registers.H = self.res(bit, self.registers.H); 2 }
                         5 => { self.registers.L = self.res(bit, self.registers.L); 2 }
                         6 => {
+                            let hl_byte = bus.read_byte(self.registers.get_hl());
                             bus.write_byte(
                                 self.registers.get_hl(),
-                                self.res(bit, bus.read_byte(self.registers.get_hl()))
+                                self.res(bit, hl_byte)
                             );
                             4
                         }
@@ -244,9 +230,10 @@ impl CPU {
                         4 => { self.registers.H = self.set(bit, self.registers.H); 2 }
                         5 => { self.registers.L = self.set(bit, self.registers.L); 2 }
                         6 => {
+                            let hl_byte = bus.read_byte(self.registers.get_hl());
                             bus.write_byte(
                                 self.registers.get_hl(),
-                                self.set(bit, bus.read_byte(self.registers.get_hl()))
+                                self.set(bit, hl_byte)
                             );
                             4
                         }
@@ -304,6 +291,8 @@ impl CPU {
                         _ => { panic!("Invalid register!") }
                     }
 
+                    bus.tick(1);
+
                     2
                 }
                 0x04 | 0x14 | 0x24 | 0x34 | 0x0C | 0x1C | 0x2C | 0x3C => {
@@ -317,9 +306,10 @@ impl CPU {
                         4 => { self.registers.H = self.inc8(self.registers.H); 1 }
                         5 => { self.registers.L = self.inc8(self.registers.L); 1 }
                         6 => {
+                            let hl_byte = bus.read_byte(self.registers.get_hl());
                             bus.write_byte(
                                 self.registers.get_hl(),
-                                self.inc8(bus.read_byte(self.registers.get_hl()))
+                                self.inc8(hl_byte)
                             );
                             3
                         }
@@ -338,9 +328,10 @@ impl CPU {
                         4 => { self.registers.H = self.dec8(self.registers.H); 1 }
                         5 => { self.registers.L = self.dec8(self.registers.L); 1 }
                         6 => {
+                            let hl_byte = bus.read_byte(self.registers.get_hl());
                             bus.write_byte(
                                 self.registers.get_hl(),
-                                self.dec8(bus.read_byte(self.registers.get_hl()))
+                                self.dec8(hl_byte)
                             );
                             3
                         }
@@ -376,6 +367,8 @@ impl CPU {
                         _ => { panic!("Invalid register!") }
                     }
 
+                    bus.tick(1);
+
                     2
                 }
                 0x0A | 0x1A | 0x2A | 0x3A => {
@@ -408,6 +401,8 @@ impl CPU {
                         _ => { panic!("Invalid register!") }
                     }
 
+                    bus.tick(1);
+
                     2
                 }
                 0x0F => { self.rrca(); 1 }
@@ -415,8 +410,8 @@ impl CPU {
                 0x17 => { self.rla(); 1 }
                 0x18 => {
                     let value = self.fetch_operand(bus);
-                    self.jr(value); 
-                    
+                    self.jr(value, bus);
+
                     3 
                 }
                 0x1F => { self.rra(); 1 }
@@ -425,8 +420,8 @@ impl CPU {
                     let value = self.fetch_operand(bus);
 
                     match condition {
-                        0 | 1 => self.jr_flag(Flag::Zero, value, condition != 0),
-                        2 | 3 => self.jr_flag(Flag::Carry, value, condition != 2),
+                        0 | 1 => self.jr_flag(Flag::Zero, value, condition != 0, bus),
+                        2 | 3 => self.jr_flag(Flag::Carry, value, condition != 2, bus),
                         _ => panic!("Invalid condition!")
                     }
                 }
@@ -445,9 +440,15 @@ impl CPU {
                     }
 
                     match source {
-                        0b110 => { self.ld8(bus, dest, reg8!(self, source, bus)); 2 }
+                        0b110 => {
+                            let reg8 = reg8!(self, source, bus);
+                            self.ld8(bus, dest, reg8);
+
+                            2 
+                        }
                         _ => { 
-                            self.ld8(bus, dest, reg8!(self, source, bus));
+                            let reg8 = reg8!(self, source, bus);
+                            self.ld8(bus, dest, reg8);
                             
                             // (HL)
                             if dest == 0b110 {
@@ -476,6 +477,7 @@ impl CPU {
                 }
                 0xC0 | 0xC8 | 0xD0 | 0xD8 => {
                     let condition = (opcode >> 3) & 0b11;
+                    bus.tick(1);
 
                     match condition {
                         0 | 1 => self.ret_flag(bus, Flag::Zero, condition != 0),
@@ -494,13 +496,15 @@ impl CPU {
                     self.registers.PC += 2; // TODO
 
                     match condition {
-                        0 | 1 => self.jp_flag(Flag::Zero, value, condition != 0),
-                        2 | 3 => self.jp_flag(Flag::Carry, value, condition != 2),
+                        0 | 1 => self.jp_flag(Flag::Zero, value, condition != 0, bus),
+                        2 | 3 => self.jp_flag(Flag::Carry, value, condition != 2, bus),
                         _ => panic!("Invalid condition!")
                     }
                 }
                 0xC3 => { 
                     self.jp(bus.read_16(self.registers.PC));
+                    bus.tick(1);
+
                     4 
                 }
                 0xC4 | 0xCC | 0xD4 | 0xDC => {
@@ -581,7 +585,9 @@ impl CPU {
                 0xE8 => {
                     // wrapping_add, adding unsigned to signed
                     let value = self.fetch_operand(bus);
+                    bus.tick(1);
                     self.add_sp(value);
+                    bus.tick(1);
 
                     4
                 }
@@ -611,9 +617,11 @@ impl CPU {
                     self.registers.set_hl(self.registers.SP);
                     self.registers.SP = old_sp;
 
+                    bus.tick(1);
+
                     3
                 }
-                0xF9 => { self.registers.SP = self.registers.get_hl(); 2 }
+                0xF9 => { self.registers.SP = self.registers.get_hl(); bus.tick(1); 2 }
                 _ => { panic!("Illegal or invalid opcode: {:#04X}", opcode) }
             }
         }
@@ -621,7 +629,7 @@ impl CPU {
     }
 
     /// Read next operand at PC and increase PC after.
-    fn fetch_operand(&mut self, bus: &Bus) -> u8 {
+    fn fetch_operand(&mut self, bus: &mut Bus) -> u8 {
         let operand = bus.read_byte(self.registers.PC);
         self.registers.PC += 1;
 
@@ -1088,9 +1096,11 @@ impl CPU {
         self.registers.set_flag(Flag::HalfCarry, false);
     }
 
-    fn jr(&mut self, value: u8) {
+    fn jr(&mut self, value: u8, bus: &mut Bus) {
         let value = value.wrapping_neg() as i8 * (-1);
         self.registers.PC = self.registers.PC.wrapping_add(value as u16);
+
+        bus.tick(1);
     }
 
     fn jp_hl(&mut self) {
@@ -1134,9 +1144,9 @@ impl CPU {
     /// Maps to `jr nz`, `jr nc`, `jr z` and `jr c`.  
     ///
     /// Returns the m-cycles it took depending on the condition
-    fn jr_flag(&mut self, flag: Flag, value: u8, condition: bool) -> u8 {
+    fn jr_flag(&mut self, flag: Flag, value: u8, condition: bool, bus: &mut Bus) -> u8 {
         if self.registers.get_flag(flag) == condition {
-            self.jr(value);
+            self.jr(value, bus);
             return 3;
         }
 
@@ -1201,9 +1211,11 @@ impl CPU {
 
     /// `value` is a 16 bit immediate operand.
     /// Second byte (after opcode) is the lower byte, third is higher byte.
-    fn jp_flag(&mut self, flag: Flag, value: u16, condition: bool) -> u8 {
+    fn jp_flag(&mut self, flag: Flag, value: u16, condition: bool, bus: &mut Bus) -> u8 {
         if self.registers.get_flag(flag) == condition {
             self.registers.PC = value;
+            bus.tick(1);
+
             return 4;
         }
 
@@ -1242,6 +1254,8 @@ impl CPU {
     }
 
     fn push(&mut self, reg16: Regs, bus: &mut Bus) {
+        bus.tick(1);
+
         match reg16 {
             Regs::BC => {
                 self.registers.SP -= 1;
@@ -1276,6 +1290,8 @@ impl CPU {
     }
 
     fn call(&mut self, bus: &mut Bus, value: u16) {
+        bus.tick(1);
+
         self.registers.SP -= 1;
         bus.write_byte(self.registers.SP, ((self.registers.PC) >> 8) as u8);
         self.registers.SP -= 1;
@@ -1301,15 +1317,17 @@ impl CPU {
         self.ime = false;
     }
 
-    fn ret(&mut self, bus: &Bus) {
+    fn ret(&mut self, bus: &mut Bus) {
         let lower_byte = bus.read_byte(self.registers.SP);
         let higher_byte = bus.read_byte(self.registers.SP + 1);
 
         self.registers.PC = (higher_byte as u16) << 8 | lower_byte as u16;
         self.registers.SP += 2;
+
+        bus.tick(1);
     }
 
-    fn ret_flag(&mut self, bus: &Bus, flag: Flag, condition: bool) -> u8 {
+    fn ret_flag(&mut self, bus: &mut Bus, flag: Flag, condition: bool) -> u8 {
         if self.registers.get_flag(flag) == condition {
             self.ret(bus);
             return 5;
@@ -1318,7 +1336,7 @@ impl CPU {
         2
     }
 
-    fn reti(&mut self, bus: &Bus) {
+    fn reti(&mut self, bus: &mut Bus) {
         self.ime = true;
         self.ret(bus);
     }
@@ -1328,8 +1346,8 @@ impl CPU {
     }
 
     fn halt(&mut self, bus: &Bus) {
-        let ie = bus.read_byte(0xFFFF);
-        let if_flag = bus.read_byte(0xFF0F);
+        let ie = bus.memory[0xFFFF];
+        let if_flag = bus.memory[0xFF0F];
 
         if self.ime {
             if ie & if_flag & 0x1F == 0 {

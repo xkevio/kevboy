@@ -1,5 +1,3 @@
-use std::io::StdoutLock;
-
 use crate::cpu::cpu::CPU;
 use crate::cpu::interrupts;
 use crate::mmu::bus::Bus;
@@ -19,17 +17,18 @@ impl Emulator {
         }
     }
 
-    pub fn step(&mut self, lock: &mut StdoutLock) -> u8 {
+    pub fn step(&mut self) -> u8 {
         // TODO:
         // interrupt handling, ugly and should be changed (proof of concept)
-        let ie = self.bus.read_byte(0xFFFF);
-        let if_flag = self.bus.read_byte(0xFF0F);
+        let ie = self.bus.memory[0xFFFF];
+        let if_flag = self.bus.memory[0xFF0F];
 
         if self.cpu.ime {
             for interrupt in interrupts::get_enabled_interrupts(ie) {
                 if let Some(interr) = interrupt {
                     if interrupts::is_interrupt_requested(if_flag, &interr) {
                         let pc_bytes = self.cpu.registers.PC.to_be_bytes();
+                        self.bus.tick(2); // 2 nop delay
 
                         self.cpu.registers.SP -= 1;
                         self.bus.write_byte(self.cpu.registers.SP, pc_bytes[0]);
@@ -56,10 +55,10 @@ impl Emulator {
             }
         }
 
-        let cycles = self.cpu.tick(&mut self.bus, lock);
-        self.cycle_count += cycles as u64; // this before or after bus/timer tick?
+        let cycles = self.cpu.tick(&mut self.bus);
+        self.cycle_count += cycles as u64;
 
-        self.bus.tick(self.cycle_count, cycles as u16);
+        // self.bus.tick(cycles as u16);
 
         cycles
     }
