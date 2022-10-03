@@ -3,9 +3,7 @@ use crate::{
     mmu::bus::Bus,
 };
 
-use std::{
-    ops::{Add, Sub},
-};
+use std::ops::{Add, Sub};
 
 macro_rules! reg8 {
     ($self:ident, $bits:expr, $bus:ident) => {
