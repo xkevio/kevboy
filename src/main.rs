@@ -5,6 +5,7 @@ use ui::ui::Kevboy;
 mod cpu;
 mod emulator;
 mod mmu;
+mod ppu;
 mod ui;
 
 const WIDTH: usize = 160;

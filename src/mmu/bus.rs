@@ -1,8 +1,9 @@
-use crate::mmu::timer::Timers;
+use crate::{mmu::timer::Timers, ppu::ppu::PPU};
 
 pub struct Bus {
     pub memory: [u8; 0xFFFF + 1], // one memory array not ideal
     pub timer: Timers,
+    pub ppu: PPU,
 }
 
 impl Bus {
@@ -15,6 +16,7 @@ impl Bus {
         Self {
             memory,
             timer: Timers::new(),
+            ppu: PPU::new(),
         }
     }
 
@@ -27,6 +29,9 @@ impl Bus {
         }
 
         self.timer.tick(cycles_passed);
+        for _ in 0..4 {
+            self.ppu.tick(cycles_passed);
+        }
 
         self.memory[0xFF04] = (self.timer.div >> 8) as u8;
         self.memory[0xFF05] = self.timer.tima;
@@ -111,14 +116,14 @@ impl Bus {
 
 // TODO
 fn initialize_internal_registers(memory: &mut [u8]) {
-    memory[0xFF40] = 0x91;
-    memory[0xFF07] = 0xF8;
-    memory[0xFF0F] = 0xE1;
-    memory[0xFF00] = 0xCF;
-    memory[0xFF41] = 0x81;
-    memory[0xFF46] = 0xFF;
-    memory[0xFF47] = 0xFC;
-    memory[0xFF44] = 0x90;
-    memory[0xFF4D] = 0xFF;
-    memory[0xFF50] = 0x01;
+    memory[0xFF40] = 0x91; // LCDC
+    memory[0xFF07] = 0xF8; // TAC
+    memory[0xFF0F] = 0xE1; // IF
+    memory[0xFF00] = 0xCF; // P1
+    memory[0xFF41] = 0x81; // STAT
+    memory[0xFF46] = 0xFF; // DMA
+    memory[0xFF47] = 0xFC; // BGP
+    memory[0xFF44] = 0x90; // LY
+    memory[0xFF4D] = 0xFF; // KEY1
+    memory[0xFF50] = 0x01; // Disable BOOT ROM
 }
