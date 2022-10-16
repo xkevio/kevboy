@@ -8,4 +8,6 @@ edition = "2021"
 [dependencies]
 eframe = "0.19.0"
 egui_extras = "0.19.0"
+log = "0.4.17"
 rfd = "0.10.0"
+simple_logger = "2.3.0"

@@ -1,16 +1,16 @@
 #[derive(Default)]
 pub(crate) struct PPURegisters {
-    lcdc: u8,
-    stat: u8,
-    scy: u8,
-    scx: u8,
+    pub lcdc: u8,
+    pub stat: u8,
+    pub scy: u8,
+    pub scx: u8,
     pub ly: u8,
-    lyc: u8,
-    wy: u8,
-    wx: u8,
-    bgp: u8,
-    opb0: u8,
-    opb1: u8,
+    pub lyc: u8,
+    pub wy: u8,
+    pub wx: u8,
+    pub bgp: u8,
+    pub opb0: u8,
+    pub opb1: u8,
 }
 
 impl PPURegisters {
@@ -22,4 +22,3 @@ impl PPURegisters {
         self.ly == self.lyc
     }
 }
-

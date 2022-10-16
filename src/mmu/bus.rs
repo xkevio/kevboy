@@ -30,7 +30,7 @@ impl Bus {
 
         self.timer.tick(cycles_passed);
         for _ in 0..4 {
-            self.ppu.tick(cycles_passed);
+            self.ppu.tick(cycles_passed, &mut self.memory);
         }
 
         self.memory[0xFF04] = (self.timer.div >> 8) as u8;
@@ -53,7 +53,11 @@ impl Bus {
 
     pub fn read_byte(&mut self, address: u16) -> u8 {
         self.tick(1);
-        self.memory[address as usize]
+
+        match address {
+            0xFF40..=0xFF4B => self.ppu.read_byte(address),
+            _ => self.memory[address as usize],
+        }
     }
 
     pub fn write_byte(&mut self, address: u16, byte: u8) {
@@ -95,7 +99,7 @@ impl Bus {
                         self.memory[address as usize] = byte;
                         self.timer.tac = byte;
                     }
-                    0xFF44 => {}
+                    0xFF40..=0xFF4B => self.ppu.write_byte(address, byte),
                     _ => {
                         // println!("IO registers");
                         self.memory[address as usize] = byte;
@@ -123,7 +127,7 @@ fn initialize_internal_registers(memory: &mut [u8]) {
     memory[0xFF41] = 0x81; // STAT
     memory[0xFF46] = 0xFF; // DMA
     memory[0xFF47] = 0xFC; // BGP
-    memory[0xFF44] = 0x90; // LY
+                           // memory[0xFF44] = 0x90; // LY
     memory[0xFF4D] = 0xFF; // KEY1
     memory[0xFF50] = 0x01; // Disable BOOT ROM
 }

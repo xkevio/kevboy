@@ -18,6 +18,7 @@ pub struct Kevboy<'a> {
     cy_count: u16,
     mem_viewer: MemoryViewer<'a>,
     is_memory_window_open: bool,
+    frame: Vec<u8>,
 }
 
 impl<'a> Default for Kevboy<'a> {
@@ -27,17 +28,16 @@ impl<'a> Default for Kevboy<'a> {
             cy_count: 0,
             mem_viewer: MemoryViewer::new(TEST_ROM, true),
             is_memory_window_open: false,
+            frame: [224, 248, 208, 255].repeat(256 * 256),
         }
     }
 }
 
 impl<'a> App for Kevboy<'a> {
     fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
-        let test_buffer = [224, 248, 208, 255].repeat(WIDTH * HEIGHT);
-
         let image = RetainedImage::from_color_image(
-            "test",
-            ColorImage::from_rgba_unmultiplied([WIDTH, HEIGHT], &test_buffer),
+            "frame",
+            ColorImage::from_rgba_unmultiplied([256, 256], &self.frame),
         )
         .with_texture_filter(eframe::egui::TextureFilter::Nearest);
 
@@ -45,8 +45,6 @@ impl<'a> App for Kevboy<'a> {
             menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     if ui.button("Open ROM").clicked() {
-                        println!("Open ROM clicked!");
-
                         let file = rfd::FileDialog::new()
                             .add_filter("Gameboy ROM", &["gb", "bin"])
                             .pick_file();
@@ -76,7 +74,7 @@ impl<'a> App for Kevboy<'a> {
                         CollapsingHeader::new("Game")
                             .default_open(true)
                             .show(ui, |ui| {
-                                image.show_scaled(ui, 3.0);
+                                image.show_scaled(ui, 1.5);
                             });
 
                         // Registers
@@ -125,6 +123,18 @@ impl<'a> App for Kevboy<'a> {
         while self.cy_count < 17_476 {
             self.cy_count += self.emulator.step() as u16;
         }
+
+        let new_buffer: Vec<u8> = self
+            .emulator
+            .bus
+            .ppu
+            .frame_buffer
+            .iter()
+            .map(|c| [c.r(), c.g(), c.b(), c.a()])
+            .flatten()
+            .collect();
+
+        self.frame = new_buffer;
 
         let start = Instant::now();
         while start.elapsed() < Duration::from_micros(16667) {

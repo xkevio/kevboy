@@ -3,9 +3,9 @@ use crate::cpu::interrupts;
 use crate::mmu::bus::Bus;
 
 pub struct Emulator {
-    cpu: CPU,
-    bus: Bus,
-    cycle_count: u64,
+    pub cpu: CPU,
+    pub bus: Bus,
+    pub cycle_count: u64,
 }
 
 impl Emulator {

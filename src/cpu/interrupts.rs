@@ -26,6 +26,18 @@ pub fn is_interrupt_requested(if_flag: u8, interrupt: &Interrupt) -> bool {
     }
 }
 
+pub fn request_interrupt(memory: &mut [u8], interrupt: Interrupt) {
+    let if_flag = memory[0xFF0F];
+
+    match interrupt {
+        Interrupt::VBlank => memory[0xFF0F] = if_flag & 0b1,
+        Interrupt::STAT => memory[0xFF0F] = if_flag & 0b10,
+        Interrupt::Timer => memory[0xFF0F] = if_flag & 0b100,
+        Interrupt::Serial => memory[0xFF0F] = if_flag & 0b1000,
+        Interrupt::Joypad => memory[0xFF0F] = if_flag & 0b10000,
+    }
+}
+
 pub fn reset_if(if_flag: u8, interrupt: &Interrupt) -> u8 {
     match interrupt {
         Interrupt::VBlank => if_flag & !(0b1),
