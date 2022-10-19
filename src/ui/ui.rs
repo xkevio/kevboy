@@ -12,25 +12,25 @@ use eframe::{
 };
 use egui_extras::RetainedImage;
 
-use crate::ui::memory_viewer::MemoryViewer;
+use crate::{cpu::registers::Flag, ui::memory_viewer::MemoryViewer};
 use crate::{emulator::Emulator, LCD_HEIGHT, LCD_WIDTH};
 
 pub struct Kevboy {
     emulator: Emulator,
+    frame: Vec<u8>,
     cy_count: u16,
     mem_viewer: MemoryViewer,
     is_memory_window_open: bool,
-    frame: Vec<u8>,
 }
 
 impl Default for Kevboy {
     fn default() -> Self {
         Self {
             emulator: Emulator::new(),
+            frame: [127, 134, 15, 255].repeat(LCD_WIDTH * LCD_HEIGHT),
             cy_count: 0,
             mem_viewer: MemoryViewer::new(),
             is_memory_window_open: false,
-            frame: [127, 134, 15, 255].repeat(LCD_WIDTH * LCD_HEIGHT),
         }
     }
 }
@@ -74,46 +74,78 @@ impl App for Kevboy {
 
         CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.vertical(|ui| {
-                    // Game + Registers
-                    ui.horizontal(|ui| {
-                        // Game
-                        CollapsingHeader::new("Game")
-                            .default_open(true)
-                            .show(ui, |ui| {
-                                image.show_scaled(ui, 3.0);
-                            });
+                // Game
+                CollapsingHeader::new("Game")
+                .default_open(true)
+                .show(ui, |ui| {
+                    image.show_scaled(ui, 3.0);
+                });
 
-                        // Registers
-                        CollapsingHeader::new("Registers")
-                            .default_open(true)
-                            .show(ui, |ui| {
+                // Registers + Instructions
+                ui.vertical(|ui| {
+                    // Registers
+                    CollapsingHeader::new("Registers")
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
                                 ui.label(
                                     RichText::new("AF:\nBC:\nDE:\nHL:\n\nSP:\nPC:")
                                         .strong()
                                         .monospace()
                                         .color(Color32::GRAY),
                                 );
-                                ui.label("\nFlags:\n");
+
                                 ui.label(
-                                    RichText::new("Z\t\tN\t\tH\t\tC\n")
-                                        .strong()
-                                        .monospace()
-                                        .color(Color32::GRAY),
+                                    RichText::new(format!(
+                                        "{:#06X}\n{:#06X}\n{:#06X}\n{:#06X}\n\n{:#06X}\n{:#06X}",
+                                        self.emulator.cpu.registers.get_af(),
+                                        self.emulator.cpu.registers.get_bc(),
+                                        self.emulator.cpu.registers.get_de(),
+                                        self.emulator.cpu.registers.get_hl(),
+                                        self.emulator.cpu.registers.SP,
+                                        self.emulator.cpu.registers.PC
+                                    ))
+                                    .strong()
+                                    .monospace()
+                                    .color(Color32::GOLD),
                                 );
                             });
-                    });
+
+                            ui.label("\nFlags:\n");
+                            ui.label(
+                                RichText::new("Z\t\tN\t\tH\t\tC\n")
+                                    .strong()
+                                    .monospace()
+                                    .color(Color32::GRAY),
+                            );
+
+                            ui.label(
+                                RichText::new(format!(
+                                    "{}\t\t{}\t\t{}\t\t{}",
+                                    self.emulator.cpu.registers.get_flag(Flag::Zero) as u8,
+                                    self.emulator.cpu.registers.get_flag(Flag::Substraction)
+                                        as u8,
+                                    self.emulator.cpu.registers.get_flag(Flag::HalfCarry) as u8,
+                                    self.emulator.cpu.registers.get_flag(Flag::Carry) as u8
+                                ))
+                                .strong()
+                                .monospace()
+                                .color(Color32::GOLD),
+                            );
+                        });
+
+                    ui.add_space(10.0);
 
                     // Instructions / Disassembly
                     CollapsingHeader::new("Instructions")
-                        .default_open(true)
-                        .show(ui, |ui| {
-                            ui.add(
-                                TextEdit::multiline(&mut "")
-                                    .hint_text("Disassembly not implemented yet...")
-                                    .font(TextStyle::Monospace),
-                            );
-                        });
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        ui.add(
+                            TextEdit::multiline(&mut "")
+                                .hint_text("Disassembly not implemented yet...")
+                                .font(TextStyle::Monospace),
+                        );
+                    });
                 });
             });
         });
