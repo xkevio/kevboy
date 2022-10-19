@@ -2,7 +2,7 @@ use eframe::epaint::Color32;
 
 use crate::{
     cpu::interrupts::{self, Interrupt},
-    ppu::ppu_regs::PPURegisters,
+    ppu::{color_pallette::*, ppu_regs::PPURegisters},
     LCD_HEIGHT, LCD_WIDTH,
 };
 
@@ -203,10 +203,10 @@ impl PPU {
     fn draw_current_line(&mut self) {
         fn bgp_color_from_value(value: u8) -> Color32 {
             match value {
-                0b00 => Color32::from_rgb(127, 134, 15),
-                0b01 => Color32::from_rgb(87, 124, 68),
-                0b10 => Color32::from_rgb(54, 93, 72),
-                0b11 => Color32::from_rgb(42, 69, 59),
+                0b00 => LCD_WHITE,
+                0b01 => LCD_LIGHT_GRAY,
+                0b10 => LCD_GRAY,
+                0b11 => LCD_BLACK,
                 _ => unreachable!(),
             }
         }
@@ -214,7 +214,6 @@ impl PPU {
         let y = self.regs.ly as usize;
 
         for i in 0..LCD_WIDTH {
-            let i = i as usize;
             self.bg_map[(y * 256 + i)] = match self.current_line[i] {
                 0b00 => bgp_color_from_value(self.regs.bgp & 0b11),
                 0b01 => bgp_color_from_value((self.regs.bgp & 0b1100) >> 2),
