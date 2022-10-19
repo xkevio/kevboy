@@ -1,4 +1,7 @@
-use std::time::{Duration, Instant};
+use std::{
+    fs,
+    time::{Duration, Instant},
+};
 
 use eframe::{
     egui::{
@@ -9,35 +12,34 @@ use eframe::{
 };
 use egui_extras::RetainedImage;
 
-use crate::WIDTH;
-use crate::{emulator::Emulator, HEIGHT};
-use crate::{ui::memory_viewer::MemoryViewer, TEST_ROM};
+use crate::ui::memory_viewer::MemoryViewer;
+use crate::{emulator::Emulator, LCD_HEIGHT, LCD_WIDTH};
 
-pub struct Kevboy<'a> {
+pub struct Kevboy {
     emulator: Emulator,
     cy_count: u16,
-    mem_viewer: MemoryViewer<'a>,
+    mem_viewer: MemoryViewer,
     is_memory_window_open: bool,
     frame: Vec<u8>,
 }
 
-impl<'a> Default for Kevboy<'a> {
+impl Default for Kevboy {
     fn default() -> Self {
         Self {
-            emulator: Emulator::new(TEST_ROM),
+            emulator: Emulator::new(),
             cy_count: 0,
-            mem_viewer: MemoryViewer::new(TEST_ROM, true),
+            mem_viewer: MemoryViewer::new(),
             is_memory_window_open: false,
-            frame: [224, 248, 208, 255].repeat(256 * 256),
+            frame: [127, 134, 15, 255].repeat(LCD_WIDTH * LCD_HEIGHT),
         }
     }
 }
 
-impl<'a> App for Kevboy<'a> {
+impl App for Kevboy {
     fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
         let image = RetainedImage::from_color_image(
             "frame",
-            ColorImage::from_rgba_unmultiplied([256, 256], &self.frame),
+            ColorImage::from_rgba_unmultiplied([LCD_WIDTH, LCD_HEIGHT], &self.frame),
         )
         .with_texture_filter(eframe::egui::TextureFilter::Nearest);
 
@@ -50,8 +52,13 @@ impl<'a> App for Kevboy<'a> {
                             .pick_file();
 
                         if let Some(path) = file {
-                            println!("{}", path.to_str().unwrap());
+                            let rom = fs::read(path).expect("ROM wasn't loaded correctly!");
+
+                            self.emulator.load_rom(&rom);
+                            self.mem_viewer = MemoryViewer::new_with_memory(&rom, true);
                         }
+
+                        ui.close_menu();
                     }
                 });
 
@@ -74,7 +81,7 @@ impl<'a> App for Kevboy<'a> {
                         CollapsingHeader::new("Game")
                             .default_open(true)
                             .show(ui, |ui| {
-                                image.show_scaled(ui, 1.5);
+                                image.show_scaled(ui, 3.0);
                             });
 
                         // Registers
@@ -103,7 +110,7 @@ impl<'a> App for Kevboy<'a> {
                         .show(ui, |ui| {
                             ui.add(
                                 TextEdit::multiline(&mut "")
-                                    .hint_text("No ROM loaded")
+                                    .hint_text("Disassembly not implemented yet...")
                                     .font(TextStyle::Monospace),
                             );
                         });
@@ -120,29 +127,30 @@ impl<'a> App for Kevboy<'a> {
         }
 
         // println!("{:?}", Instant::now());
-        while self.cy_count < 17_476 {
-            self.cy_count += self.emulator.step() as u16;
+
+        if !self.emulator.rom.is_empty() {
+            while self.cy_count < 17_476 {
+                self.cy_count += self.emulator.step() as u16;
+            }
+
+            let buf = self
+                .emulator
+                .bus
+                .ppu
+                .get_frame_viewport()
+                .iter()
+                .flat_map(|c| [c.r(), c.g(), c.b(), c.a()])
+                .collect();
+
+            self.frame = buf;
+
+            let start = Instant::now();
+            while start.elapsed() < Duration::from_micros(16667) {
+                // do nothing
+            }
+
+            self.cy_count = 0;
+            ctx.request_repaint();
         }
-
-        let new_buffer: Vec<u8> = self
-            .emulator
-            .bus
-            .ppu
-            .frame_buffer
-            .iter()
-            .map(|c| [c.r(), c.g(), c.b(), c.a()])
-            .flatten()
-            .collect();
-
-        self.frame = new_buffer;
-
-        let start = Instant::now();
-        while start.elapsed() < Duration::from_micros(16667) {
-            // do nothing
-        }
-
-        self.cy_count = 0;
-
-        ctx.request_repaint();
     }
 }

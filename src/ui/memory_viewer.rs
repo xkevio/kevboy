@@ -3,14 +3,24 @@ use eframe::{
     epaint::Color32,
 };
 
-pub struct MemoryViewer<'a> {
-    memory: &'a [u8],
+pub struct MemoryViewer {
+    memory: Vec<u8>,
     show_ascii: bool,
 }
 
-impl<'a> MemoryViewer<'a> {
-    pub fn new(memory: &'a [u8], show_ascii: bool) -> Self {
-        Self { memory, show_ascii }
+impl MemoryViewer {
+    pub fn new() -> Self {
+        Self {
+            memory: Vec::new(),
+            show_ascii: false,
+        }
+    }
+
+    pub fn new_with_memory(memory: &[u8], show_ascii: bool) -> Self {
+        Self {
+            memory: memory.to_vec(),
+            show_ascii,
+        }
     }
 
     pub fn show(&mut self, ui: &mut Ui) {

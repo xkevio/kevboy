@@ -1,3 +1,4 @@
+#[allow(clippy::upper_case_acronyms)]
 pub enum Interrupt {
     VBlank = 0x40,
     STAT = 0x48,

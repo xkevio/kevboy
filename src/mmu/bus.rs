@@ -1,23 +1,23 @@
 use crate::{mmu::timer::Timers, ppu::ppu::PPU};
 
 pub struct Bus {
-    pub memory: [u8; 0xFFFF + 1], // one memory array not ideal
+    pub memory: [u8; 0x10000], // one memory array not ideal
     pub timer: Timers,
     pub ppu: PPU,
 }
 
 impl Bus {
-    pub fn new(rom: &[u8]) -> Self {
-        let mut memory = [0u8; 0xFFFF + 1];
-        memory[..32768].copy_from_slice(rom);
-
-        initialize_internal_registers(&mut memory);
-
+    pub fn new() -> Self {
         Self {
-            memory,
+            memory: [0u8; 0x10000],
             timer: Timers::new(),
             ppu: PPU::new(),
         }
+    }
+
+    pub fn load_rom_into_memory(&mut self, rom: &[u8]) {
+        self.memory[..32768].copy_from_slice(rom);
+        initialize_internal_registers(&mut self.memory);
     }
 
     pub fn tick(&mut self, cycles_passed: u16) {
@@ -123,7 +123,7 @@ fn initialize_internal_registers(memory: &mut [u8]) {
     memory[0xFF40] = 0x91; // LCDC
     memory[0xFF07] = 0xF8; // TAC
     memory[0xFF0F] = 0xE1; // IF
-    memory[0xFF00] = 0xCF; // P1
+    memory[0xFF00] = 0xCF; // P1 / JOYP
     memory[0xFF41] = 0x81; // STAT
     memory[0xFF46] = 0xFF; // DMA
     memory[0xFF47] = 0xFC; // BGP

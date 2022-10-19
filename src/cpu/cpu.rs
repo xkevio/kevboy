@@ -21,6 +21,7 @@ macro_rules! reg8 {
     };
 }
 
+#[allow(clippy::upper_case_acronyms)]
 pub struct CPU {
     pub registers: Registers,
     pub ime: bool,
@@ -410,7 +411,7 @@ impl CPU {
                     let value = self.fetch_operand(bus);
                     self.jr(value, bus);
 
-                    3 
+                    3
                 }
                 0x1F => { self.rra(); 1 }
                 0x20 | 0x28 | 0x30 | 0x38 => {
@@ -442,12 +443,12 @@ impl CPU {
                             let reg8 = reg8!(self, source, bus);
                             self.ld8(bus, dest, reg8);
 
-                            2 
+                            2
                         }
-                        _ => { 
+                        _ => {
                             let reg8 = reg8!(self, source, bus);
                             self.ld8(bus, dest, reg8);
-                            
+
                             // (HL)
                             if dest == 0b110 {
                                 2
@@ -499,11 +500,11 @@ impl CPU {
                         _ => panic!("Invalid condition!")
                     }
                 }
-                0xC3 => { 
+                0xC3 => {
                     self.jp(bus.read_16(self.registers.PC));
                     bus.tick(1);
 
-                    4 
+                    4
                 }
                 0xC4 | 0xCC | 0xD4 | 0xDC => {
                     let condition = (opcode >> 3) & 0b11;
@@ -545,7 +546,7 @@ impl CPU {
                     4
                 }
                 0xC9 => { self.ret(bus); 4 }
-                0xCD => { 
+                0xCD => {
                     let address = bus.read_16(self.registers.PC);
 
                     self.registers.PC += 2;
@@ -795,7 +796,7 @@ impl CPU {
 
     // make prettier, dont have 3 half_carry functions
     fn add_sp(&mut self, value: u8) {
-        let signed_operand = value.wrapping_neg() as i8 * (-1);
+        let signed_operand = -(value.wrapping_neg() as i8);
 
         self.registers.set_flag(
             Flag::HalfCarry,
@@ -1095,7 +1096,7 @@ impl CPU {
     }
 
     fn jr(&mut self, value: u8, bus: &mut Bus) {
-        let value = value.wrapping_neg() as i8 * (-1);
+        let value = -(value.wrapping_neg() as i8);
         self.registers.PC = self.registers.PC.wrapping_add(value as u16);
 
         bus.tick(1);
@@ -1122,7 +1123,7 @@ impl CPU {
 
     fn rla(&mut self) {
         let bit7 = self.registers.A & (1 << 7);
-        self.registers.A = self.registers.A << 1;
+        self.registers.A <<= 1;
 
         if self.registers.get_flag(Flag::Carry) {
             self.registers.A |= 1;
@@ -1164,7 +1165,7 @@ impl CPU {
 
     fn rra(&mut self) {
         let bit0 = self.registers.A & 0b1;
-        self.registers.A = self.registers.A >> 1;
+        self.registers.A >>= 1;
 
         if self.registers.get_flag(Flag::Carry) {
             self.registers.A |= 1 << 7;

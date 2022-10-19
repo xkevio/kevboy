@@ -3,6 +3,7 @@ use eframe::epaint::Color32;
 use crate::{
     cpu::interrupts::{self, Interrupt},
     ppu::ppu_regs::PPURegisters,
+    LCD_HEIGHT, LCD_WIDTH,
 };
 
 #[derive(PartialEq, Clone, Copy)]
@@ -13,8 +14,9 @@ enum Mode {
     HBlank = 0,
 }
 
+#[allow(clippy::upper_case_acronyms)]
 pub struct PPU {
-    pub frame_buffer: [Color32; 256 * 256],
+    pub bg_map: [Color32; 256 * 256],
     current_line: Vec<u8>,
     regs: PPURegisters,
     cycles_passed: u16,
@@ -24,7 +26,7 @@ pub struct PPU {
 impl PPU {
     pub fn new() -> Self {
         Self {
-            frame_buffer: [Color32::WHITE; 256 * 256],
+            bg_map: [Color32::from_rgb(127, 134, 15); 256 * 256],
             current_line: Vec::new(),
             regs: PPURegisters::default(),
             cycles_passed: 0,
@@ -71,7 +73,7 @@ impl PPU {
 
                         // "draw" pixels into current line
                         if self.current_line.is_empty() {
-                            self.current_line = self.get_bg_line(memory);
+                            self.current_line = self.get_current_line(memory);
                         }
                     }
                     253..=456 => {
@@ -79,8 +81,7 @@ impl PPU {
 
                         // add line to buffer
                         if self.cycles_passed >= 455 {
-                            // println!("drawing line");
-                            self.draw_line();
+                            self.draw_current_line();
                         }
                     }
                     _ => panic!("More than 456 clocks have passed!"),
@@ -123,31 +124,44 @@ impl PPU {
         }
     }
 
-    fn get_bg_line(&self, memory: &mut [u8]) -> Vec<u8> {
+    pub fn get_frame_viewport(&self) -> [Color32; LCD_WIDTH * LCD_HEIGHT] {
+        let mut viewport = [Color32::WHITE; LCD_WIDTH * LCD_HEIGHT];
+
+        for y in 0..LCD_HEIGHT {
+            for x in 0..LCD_WIDTH {
+                let wrapping_y = (y + (self.regs.scy as usize)) % 256;
+                let wrapping_x = (x + (self.regs.scx as usize)) % 256;
+
+                let index = wrapping_y * 256 + wrapping_x;
+                let new_index = y * LCD_WIDTH + x;
+
+                let bg_pixel = self.bg_map[index];
+                viewport[new_index] = bg_pixel;
+            }
+        }
+
+        viewport
+    }
+
+    fn get_current_line(&self, memory: &mut [u8]) -> Vec<u8> {
+        let mut current_line: Vec<u8> = Vec::new();
+
         // bg enable
-        let mut bg_line: Vec<u8> = Vec::new();
-        if self.regs.lcdc & 0b1 != 0 {
-            let tile_map_area = if self.regs.lcdc & 0b1000 != 0 { // TODO
+        if self.regs.is_bg_enabled() {
+            let tile_map_area = if self.regs.lcdc & 0b1000 != 0 {
                 0x9C00
             } else {
                 0x9800
             };
 
             let unsigned_addressing = self.regs.lcdc & 0b10000 != 0;
-            let test_start = tile_map_area + (((self.regs.ly / 8) as usize) * 0x20); 
+            let tile_map_start = tile_map_area + (((self.regs.ly / 8) as usize) * 0x20);
 
-            for index in test_start..=(test_start + 0x1F) {
-                log::info!("index: {:#06X}, tile index: {}", index, memory[index] as usize  * 16);
-                log::info!("ly: {}, unsigned addressing mode: {}", self.regs.ly, unsigned_addressing);
+            for index in tile_map_start..=(tile_map_start + 0x1F) {
                 let line_index = (memory[index] as usize) * 16;
                 let ly_bytes = (self.regs.ly % 8) as usize;
 
                 if unsigned_addressing {
-
-                    log::info!("line index: {line_index}");
-                    log::info!("bytes at: {:#06X}", 0x8000 + (line_index) + (2 * ly_bytes));
-                    log::info!("bytes at: {:#06X}\n", 0x8000 + (line_index) + (2 * ly_bytes + 1));
-
                     let first_byte = memory[0x8000 + (line_index) + (2 * ly_bytes)];
                     let second_byte = memory[0x8000 + (line_index) + (2 * ly_bytes + 1)];
 
@@ -155,8 +169,7 @@ impl PPU {
                         let lsb = (first_byte & (1 << i)) >> i;
                         let msb = (second_byte & (1 << i)) >> i;
 
-                        bg_line.push(msb << 1 | lsb);
-                        // log::info!("{:#06b} | {:#06b}\n", msb << 1, lsb);
+                        current_line.push(msb << 1 | lsb);
                     }
                 } else {
                     let first_byte = if memory[index] <= 127 {
@@ -175,34 +188,34 @@ impl PPU {
                         let lsb = (first_byte & (1 << i)) >> i;
                         let msb = (second_byte & (1 << i)) >> i;
 
-                        bg_line.push((msb << 1) | lsb);
+                        current_line.push((msb << 1) | lsb);
                     }
                 }
             }
 
-            bg_line
+            current_line
         } else {
-            bg_line.fill(0b00);
-            bg_line
+            current_line.fill(0b00);
+            current_line
         }
     }
 
-    fn draw_line(&mut self) {
+    fn draw_current_line(&mut self) {
         fn bgp_color_from_value(value: u8) -> Color32 {
             match value {
-                0b00 => Color32::WHITE,
-                0b01 => Color32::LIGHT_GRAY,
-                0b10 => Color32::GRAY,
-                0b11 => Color32::BLACK,
+                0b00 => Color32::from_rgb(127, 134, 15),
+                0b01 => Color32::from_rgb(87, 124, 68),
+                0b10 => Color32::from_rgb(54, 93, 72),
+                0b11 => Color32::from_rgb(42, 69, 59),
                 _ => unreachable!(),
             }
         }
 
         let y = self.regs.ly as usize;
 
-        for i in 0..=255 {
-            log::info!("{}", (y * 256 + i));
-            self.frame_buffer[(y * 256 + i)] = match self.current_line[i as usize] {
+        for i in 0..LCD_WIDTH {
+            let i = i as usize;
+            self.bg_map[(y * 256 + i)] = match self.current_line[i] {
                 0b00 => bgp_color_from_value(self.regs.bgp & 0b11),
                 0b01 => bgp_color_from_value((self.regs.bgp & 0b1100) >> 2),
                 0b10 => bgp_color_from_value((self.regs.bgp & 0b110000) >> 4),

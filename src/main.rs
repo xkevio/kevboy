@@ -8,10 +8,8 @@ mod mmu;
 mod ppu;
 mod ui;
 
-const WIDTH: usize = 160;
-const HEIGHT: usize = 144;
-
-const TEST_ROM: &[u8; 32768] = include_bytes!("../blargg_tests/01-special.gb");
+const LCD_WIDTH: usize = 160;
+const LCD_HEIGHT: usize = 144;
 
 fn main() {
     // simple_logger::init().unwrap();

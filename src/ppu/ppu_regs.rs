@@ -21,4 +21,8 @@ impl PPURegisters {
     pub fn ly_lyc(&self) -> bool {
         self.ly == self.lyc
     }
+
+    pub fn is_bg_enabled(&self) -> bool {
+        self.lcdc & 0b1 != 0
+    }
 }
