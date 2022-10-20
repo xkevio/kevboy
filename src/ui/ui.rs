@@ -15,9 +15,12 @@ use egui_extras::RetainedImage;
 use crate::{cpu::registers::Flag, ui::memory_viewer::MemoryViewer};
 use crate::{emulator::Emulator, LCD_HEIGHT, LCD_WIDTH};
 
+use super::frame_history::FrameHistory;
+
 pub struct Kevboy {
     emulator: Emulator,
     frame: Vec<u8>,
+    history: FrameHistory,
     cy_count: u16,
     mem_viewer: MemoryViewer,
     is_memory_window_open: bool,
@@ -28,6 +31,7 @@ impl Default for Kevboy {
         Self {
             emulator: Emulator::new(),
             frame: [127, 134, 15, 255].repeat(LCD_WIDTH * LCD_HEIGHT),
+            history: FrameHistory::default(),
             cy_count: 0,
             mem_viewer: MemoryViewer::new(),
             is_memory_window_open: false,
@@ -37,6 +41,9 @@ impl Default for Kevboy {
 
 impl App for Kevboy {
     fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
+        self.history.update(ctx, _frame);
+        _frame.set_window_title(&format!("Kevboy-rs ({} fps)", self.history.fps().trunc()));
+
         let image = RetainedImage::from_color_image(
             "frame",
             ColorImage::from_rgba_unmultiplied([LCD_WIDTH, LCD_HEIGHT], &self.frame),
