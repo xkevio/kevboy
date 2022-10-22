@@ -33,7 +33,7 @@ pub struct CPU {
 impl CPU {
     pub fn new() -> Self {
         Self {
-            registers: Registers::new_dmg(0x66), // no header check yet, blargg tests have 0x66
+            registers: Registers::new_dmg(0),
             ime: false,
             halt: false,
             stopped: false,

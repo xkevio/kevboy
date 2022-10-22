@@ -54,6 +54,16 @@ impl Registers {
         }
     }
 
+    pub fn load_header_checksum(&mut self, header_checksum: u8) {
+        let flag = if header_checksum == 0x00 {
+            0b10000000
+        } else {
+            0b10110000
+        };
+
+        self.F = flag;
+    }
+
     pub fn get_af(&self) -> u16 {
         (self.A as u16) << 8 | self.F as u16
     }

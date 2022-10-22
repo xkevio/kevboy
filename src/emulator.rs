@@ -24,10 +24,11 @@ impl Emulator {
 
         self.rom = rom.to_vec();
         self.bus.load_rom_into_memory(rom);
+        self.cpu.registers.load_header_checksum(rom[0x014D]);
     }
 
     pub fn step(&mut self) -> u8 {
-        // TODO:
+        // TODO: find out if to tick when reading IF or IE
         // interrupt handling, ugly and should be changed (proof of concept)
         let ie = self.bus.memory[0xFFFF];
         let if_flag = self.bus.memory[0xFF0F];
