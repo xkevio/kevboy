@@ -82,7 +82,7 @@ impl Timers {
             1 => 4,
             2 => 16,
             3 => 64,
-            _ => panic!("Greater value than two bits should be able to store!"),
+            _ => unreachable!("Greater value than two bits should be able to store!"),
         }
     }
 }

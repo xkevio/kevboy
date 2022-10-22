@@ -1,9 +1,10 @@
-use crate::{mmu::timer::Timers, ppu::ppu::PPU};
+use crate::{mmu::timer::Timers, ppu::ppu::PPU, cpu::{interrupts::InterruptHandler, cpu::CPU}};
 
 pub struct Bus {
     pub memory: [u8; 0x10000], // one memory array not ideal
     pub timer: Timers,
     pub ppu: PPU,
+    pub interrupt_handler: InterruptHandler,
 }
 
 impl Bus {
@@ -12,6 +13,7 @@ impl Bus {
             memory: [0u8; 0x10000],
             timer: Timers::new(),
             ppu: PPU::new(),
+            interrupt_handler: InterruptHandler::default(),
         }
     }
 
@@ -23,6 +25,7 @@ impl Bus {
     pub fn tick(&mut self, cycles_passed: u16) {
         if self.timer.if_fired != 0 {
             self.memory[0xFF0F] |= self.timer.if_fired;
+            self.interrupt_handler.intf |= self.timer.if_fired;
             self.timer.if_fired = 0;
 
             self.timer.tima = self.timer.tma;
@@ -30,7 +33,7 @@ impl Bus {
 
         self.timer.tick(cycles_passed);
         for _ in 0..4 {
-            self.ppu.tick(cycles_passed, &mut self.memory);
+            self.ppu.tick(cycles_passed, &mut self.memory, &mut self.interrupt_handler);
         }
 
         self.memory[0xFF04] = (self.timer.div >> 8) as u8;
@@ -56,6 +59,8 @@ impl Bus {
 
         match address {
             0xFF40..=0xFF4B => self.ppu.read_byte(address),
+            0xFF0F => self.interrupt_handler.intf,
+            0xFFFF => self.interrupt_handler.inte,
             _ => self.memory[address as usize],
         }
     }
@@ -63,7 +68,7 @@ impl Bus {
     pub fn write_byte(&mut self, address: u16, byte: u8) {
         self.tick(1);
         match address {
-            0x0000..=0x7FFF => println!("write to Read-Only-Memory, ignore for now"),
+            0x0000..=0x7FFF => {},
             0x8000..=0x9FFF => {
                 // println!("VRAM access to {:#08X}", address);
                 self.memory[address as usize] = byte;
@@ -76,9 +81,9 @@ impl Bus {
                 // println!("WRAM access to {:#08X}", address);
                 self.memory[address as usize] = byte;
             }
-            0xE000..=0xFDFF => println!("Echo RAM, ignore write"),
-            0xFE00..=0xFE9F => println!("OAM write, ignore"),
-            0xFEA0..=0xFEFF => println!("Not usable, usage of this area is prohibited"),
+            0xE000..=0xFDFF => {}, // println!("Echo RAM, ignore write"),
+            0xFE00..=0xFE9F => {}, // println!("OAM write, ignore"),
+            0xFEA0..=0xFEFF => {}, // println!("Not usable, usage of this area is prohibited"),
             0xFF00..=0xFF7F => {
                 match address {
                     0xFF01 => eprint!("{}", byte as char), // SB output for blargg tests
@@ -100,6 +105,10 @@ impl Bus {
                         self.timer.tac = byte;
                     }
                     0xFF40..=0xFF4B => self.ppu.write_byte(address, byte),
+                    0xFF0F => {
+                        self.interrupt_handler.intf = byte;
+                        self.memory[address as usize] = byte;
+                    }
                     _ => {
                         // println!("IO registers");
                         self.memory[address as usize] = byte;
@@ -112,8 +121,43 @@ impl Bus {
             }
             0xFFFF => {
                 // println!("Write to Interrupt Enable register (IE)");
+                self.interrupt_handler.inte = byte;
                 self.memory[address as usize] = byte;
             }
+        }
+    }
+
+    pub fn handle_interrupts(&mut self, cpu: &mut CPU) -> bool {
+        if cpu.ime {
+            for interrupt in self.interrupt_handler.get_enabled_interrupts().into_iter().flatten() {
+                if self.interrupt_handler.is_interrupt_requested(&interrupt) {
+                    let pc_bytes = cpu.registers.PC.to_be_bytes();
+                    self.tick(2); // 2 nop delay
+
+                    cpu.registers.SP -= 1;
+                    self.write_byte(cpu.registers.SP, pc_bytes[0]);
+
+                    cpu.registers.SP -= 1;
+                    self.write_byte(cpu.registers.SP, pc_bytes[1]);
+
+                    let intf = self.interrupt_handler.reset_if(&interrupt);
+                    self.write_byte(0xFF0F, intf);
+
+                    cpu.registers.PC = interrupt as u16;
+
+                    cpu.ime = false;
+                    cpu.halt = false;
+
+                    return true;
+                }
+            }
+            return false;
+        } else {
+            if self.interrupt_handler.inte & self.interrupt_handler.intf & 0x1F != 0 {
+                cpu.halt = false;
+            }
+
+            return false;
         }
     }
 

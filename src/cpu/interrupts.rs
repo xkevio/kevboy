@@ -7,44 +7,52 @@ pub enum Interrupt {
     Joypad = 0x60,
 }
 
-pub fn get_enabled_interrupts(ie: u8) -> [Option<Interrupt>; 5] {
-    let vblank = ((ie & 0b1) != 0).then_some(Interrupt::VBlank);
-    let stat = ((ie & 0b10) != 0).then_some(Interrupt::STAT);
-    let timer = ((ie & 0b100) != 0).then_some(Interrupt::Timer);
-    let serial = ((ie & 0b1000) != 0).then_some(Interrupt::Serial);
-    let joypad = ((ie & 0b10000) != 0).then_some(Interrupt::Joypad);
-
-    [vblank, stat, timer, serial, joypad]
+#[derive(Default)]
+pub struct InterruptHandler {
+    pub inte: u8,
+    pub intf: u8,
 }
 
-pub fn is_interrupt_requested(if_flag: u8, interrupt: &Interrupt) -> bool {
-    match interrupt {
-        Interrupt::VBlank => if_flag & 0b1 != 0,
-        Interrupt::STAT => if_flag & 0b10 != 0,
-        Interrupt::Timer => if_flag & 0b100 != 0,
-        Interrupt::Serial => if_flag & 0b1000 != 0,
-        Interrupt::Joypad => if_flag & 0b10000 != 0,
+impl InterruptHandler {
+    pub fn get_enabled_interrupts(&self) -> [Option<Interrupt>; 5] {
+        let vblank = ((self.inte & 0b1) != 0).then_some(Interrupt::VBlank);
+        let stat = ((self.inte & 0b10) != 0).then_some(Interrupt::STAT);
+        let timer = ((self.inte & 0b100) != 0).then_some(Interrupt::Timer);
+        let serial = ((self.inte & 0b1000) != 0).then_some(Interrupt::Serial);
+        let joypad = ((self.inte & 0b10000) != 0).then_some(Interrupt::Joypad);
+    
+        [vblank, stat, timer, serial, joypad]
     }
-}
-
-pub fn request_interrupt(memory: &mut [u8], interrupt: Interrupt) {
-    let if_flag = memory[0xFF0F];
-
-    match interrupt {
-        Interrupt::VBlank => memory[0xFF0F] = if_flag & 0b1,
-        Interrupt::STAT => memory[0xFF0F] = if_flag & 0b10,
-        Interrupt::Timer => memory[0xFF0F] = if_flag & 0b100,
-        Interrupt::Serial => memory[0xFF0F] = if_flag & 0b1000,
-        Interrupt::Joypad => memory[0xFF0F] = if_flag & 0b10000,
+    
+    pub fn is_interrupt_requested(&self, interrupt: &Interrupt) -> bool {
+        match interrupt {
+            Interrupt::VBlank => self.intf & 0b1 != 0,
+            Interrupt::STAT => self.intf & 0b10 != 0,
+            Interrupt::Timer => self.intf & 0b100 != 0,
+            Interrupt::Serial => self.intf & 0b1000 != 0,
+            Interrupt::Joypad => self.intf & 0b10000 != 0,
+        }
     }
-}
+    
+    pub fn reset_if(&mut self, interrupt: &Interrupt) -> u8 {
+        match interrupt {
+            Interrupt::VBlank => self.intf = self.intf & !(0b1),
+            Interrupt::STAT => self.intf = self.intf & !(0b10),
+            Interrupt::Timer => self.intf = self.intf & !(0b100),
+            Interrupt::Serial => self.intf = self.intf & !(0b1000),
+            Interrupt::Joypad => self.intf = self.intf & !(0b10000),
+        }
 
-pub fn reset_if(if_flag: u8, interrupt: &Interrupt) -> u8 {
-    match interrupt {
-        Interrupt::VBlank => if_flag & !(0b1),
-        Interrupt::STAT => if_flag & !(0b10),
-        Interrupt::Timer => if_flag & !(0b100),
-        Interrupt::Serial => if_flag & !(0b1000),
-        Interrupt::Joypad => if_flag & !(0b10000),
+        self.intf
+    }
+
+    pub fn request_interrupt(&mut self, interrupt: Interrupt) {
+        match interrupt {
+            Interrupt::VBlank => self.intf &= 0b1,
+            Interrupt::STAT => self.intf &= 0b10,
+            Interrupt::Timer => self.intf &= 0b100,
+            Interrupt::Serial => self.intf &= 0b1000,
+            Interrupt::Joypad => self.intf &= 0b10000,
+        }
     }
 }

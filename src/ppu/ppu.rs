@@ -1,7 +1,7 @@
 use eframe::epaint::Color32;
 
 use crate::{
-    cpu::interrupts::{self, Interrupt},
+    cpu::interrupts::{Interrupt, InterruptHandler},
     ppu::{color_pallette::*, ppu_regs::PPURegisters},
     LCD_HEIGHT, LCD_WIDTH,
 };
@@ -27,7 +27,7 @@ impl PPU {
     pub fn new() -> Self {
         Self {
             bg_map: [Color32::from_rgb(127, 134, 15); 256 * 256],
-            current_line: Vec::new(),
+            current_line: vec![0b11; LCD_WIDTH],
             regs: PPURegisters::default(),
             cycles_passed: 0,
             current_mode: Mode::Mode2,
@@ -37,7 +37,7 @@ impl PPU {
     // should tick 4 times per m-cycle
     // 456 clocks per scanline
     // 80 (Mode2) - 172 (Mode3) - 204 (HBlank) - VBlank
-    pub fn tick(&mut self, cycles_passed: u16, memory: &mut [u8]) {
+    pub fn tick(&mut self, cycles_passed: u16, memory: &mut [u8], interrupt_handler: &mut InterruptHandler) {
         if self.regs.is_lcd_on() {
             self.cycles_passed += cycles_passed;
 
@@ -45,7 +45,7 @@ impl PPU {
                 self.regs.stat |= 0b100;
 
                 if self.regs.stat & 0b1000000 != 0 {
-                    interrupts::request_interrupt(memory, Interrupt::STAT);
+                    interrupt_handler.request_interrupt(Interrupt::STAT);
                 }
             } else {
                 self.regs.stat &= !(0b100);
@@ -61,15 +61,15 @@ impl PPU {
             }
 
             if self.regs.ly >= 144 && self.regs.ly <= 153 {
-                self.change_mode(Mode::VBlank, memory);
+                self.change_mode(Mode::VBlank, interrupt_handler);
             } else {
                 match self.cycles_passed {
                     0..=80 => {
-                        self.change_mode(Mode::Mode2, memory);
+                        self.change_mode(Mode::Mode2, interrupt_handler);
                         // scan oam and bg
                     }
                     81..=252 => {
-                        self.change_mode(Mode::Mode3, memory);
+                        self.change_mode(Mode::Mode3, interrupt_handler);
 
                         // "draw" pixels into current line
                         if self.current_line.is_empty() {
@@ -77,7 +77,7 @@ impl PPU {
                         }
                     }
                     253..=456 => {
-                        self.change_mode(Mode::HBlank, memory);
+                        self.change_mode(Mode::HBlank, interrupt_handler);
 
                         // add line to buffer
                         if self.cycles_passed >= 455 {
@@ -98,6 +98,7 @@ impl PPU {
             0xFF43 => self.regs.scx,
             0xFF44 => self.regs.ly,
             0xFF45 => self.regs.lyc,
+            0xFF46 => self.regs.dma,
             0xFF47 => self.regs.bgp,
             0xFF48 => self.regs.opb0,
             0xFF49 => self.regs.opb1,
@@ -115,6 +116,7 @@ impl PPU {
             0xFF43 => self.regs.scx = value,
             0xFF44 => self.regs.ly = value,
             0xFF45 => self.regs.lyc = value,
+            0xFF46 => self.regs.dma = value,
             0xFF47 => self.regs.bgp = value,
             0xFF48 => self.regs.opb0 = value,
             0xFF49 => self.regs.opb1 = value,
@@ -195,8 +197,7 @@ impl PPU {
 
             current_line
         } else {
-            current_line.fill(0b00);
-            current_line
+            vec![0b00; LCD_WIDTH]
         }
     }
 
@@ -226,25 +227,25 @@ impl PPU {
         self.current_line.clear();
     }
 
-    fn change_mode(&mut self, to: Mode, memory: &mut [u8]) {
+    fn change_mode(&mut self, to: Mode, interrupt_handler: &mut InterruptHandler) {
         if self.current_mode != to {
             match to {
                 Mode::VBlank => {
-                    interrupts::request_interrupt(memory, Interrupt::VBlank);
+                    interrupt_handler.request_interrupt(Interrupt::VBlank);
                     if self.regs.stat & 0b10000 != 0 {
-                        interrupts::request_interrupt(memory, Interrupt::STAT);
+                        interrupt_handler.request_interrupt(Interrupt::STAT);
                     }
                 }
                 Mode::HBlank => {
                     self.regs.stat &= !(0b11);
 
                     if self.regs.stat & 0b1000 != 0 {
-                        interrupts::request_interrupt(memory, Interrupt::STAT);
+                        interrupt_handler.request_interrupt(Interrupt::STAT);
                     }
                 }
                 Mode::Mode2 => {
                     if self.regs.stat & 0b100000 != 0 {
-                        interrupts::request_interrupt(memory, Interrupt::STAT);
+                        interrupt_handler.request_interrupt(Interrupt::STAT);
                     }
                 }
                 _ => {}

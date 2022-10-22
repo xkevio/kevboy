@@ -11,6 +11,7 @@ pub(crate) struct PPURegisters {
     pub bgp: u8,
     pub opb0: u8,
     pub opb1: u8,
+    pub dma: u8,
 }
 
 impl PPURegisters {
