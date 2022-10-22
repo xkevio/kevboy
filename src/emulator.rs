@@ -6,7 +6,7 @@ pub struct Emulator {
     pub cpu: CPU,
     pub bus: Bus,
     pub rom: Vec<u8>,
-    pub cycle_count: u64,
+    pub cycle_count: u16,
 }
 
 impl Emulator {
@@ -52,7 +52,6 @@ impl Emulator {
                     self.cpu.ime = false;
                     self.cpu.halt = false;
 
-                    self.cycle_count += 5;
                     return 5;
                 }
             }
@@ -62,10 +61,7 @@ impl Emulator {
             }
         }
 
-        let cycles = self.cpu.tick(&mut self.bus);
-        self.cycle_count += cycles as u64;
-
-        cycles
+        self.cpu.tick(&mut self.bus)
     }
 
     fn reset(&mut self) {

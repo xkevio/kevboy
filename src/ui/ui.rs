@@ -15,15 +15,14 @@ use egui_extras::RetainedImage;
 use crate::{cpu::registers::Flag, ui::memory_viewer::MemoryViewer};
 use crate::{emulator::Emulator, LCD_HEIGHT, LCD_WIDTH};
 
-use super::frame_history::FrameHistory;
+use crate::ui::frame_history::FrameHistory;
 
 pub struct Kevboy {
     emulator: Emulator,
     frame: Vec<u8>,
     history: FrameHistory,
-    cy_count: u16,
     mem_viewer: MemoryViewer,
-    is_memory_window_open: bool,
+    is_memory_viewer_open: bool,
 }
 
 impl Default for Kevboy {
@@ -32,9 +31,8 @@ impl Default for Kevboy {
             emulator: Emulator::new(),
             frame: [127, 134, 15, 255].repeat(LCD_WIDTH * LCD_HEIGHT),
             history: FrameHistory::default(),
-            cy_count: 0,
             mem_viewer: MemoryViewer::new(),
-            is_memory_window_open: false,
+            is_memory_viewer_open: false,
         }
     }
 }
@@ -73,7 +71,7 @@ impl App for Kevboy {
 
                 ui.menu_button("Debug", |ui| {
                     if ui.button("Show memory (hex)").clicked() {
-                        self.is_memory_window_open = !self.is_memory_window_open;
+                        self.is_memory_viewer_open = !self.is_memory_viewer_open;
                     }
                 });
             });
@@ -83,10 +81,10 @@ impl App for Kevboy {
             ui.horizontal(|ui| {
                 // Game
                 CollapsingHeader::new("Game")
-                .default_open(true)
-                .show(ui, |ui| {
-                    image.show_scaled(ui, 3.0);
-                });
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        image.show_scaled(ui, 3.0);
+                    });
 
                 // Registers + Instructions
                 ui.vertical(|ui| {
@@ -130,8 +128,7 @@ impl App for Kevboy {
                                 RichText::new(format!(
                                     "{}\t\t{}\t\t{}\t\t{}",
                                     self.emulator.cpu.registers.get_flag(Flag::Zero) as u8,
-                                    self.emulator.cpu.registers.get_flag(Flag::Substraction)
-                                        as u8,
+                                    self.emulator.cpu.registers.get_flag(Flag::Substraction) as u8,
                                     self.emulator.cpu.registers.get_flag(Flag::HalfCarry) as u8,
                                     self.emulator.cpu.registers.get_flag(Flag::Carry) as u8
                                 ))
@@ -145,31 +142,29 @@ impl App for Kevboy {
 
                     // Instructions / Disassembly
                     CollapsingHeader::new("Instructions")
-                    .default_open(true)
-                    .show(ui, |ui| {
-                        ui.add(
-                            TextEdit::multiline(&mut "")
-                                .hint_text("Disassembly not implemented yet...")
-                                .font(TextStyle::Monospace),
-                        );
-                    });
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            ui.add(
+                                TextEdit::multiline(&mut "")
+                                    .hint_text("Disassembly not implemented yet...")
+                                    .font(TextStyle::Monospace),
+                            );
+                        });
                 });
             });
         });
 
-        if self.is_memory_window_open {
+        if self.is_memory_viewer_open {
             Window::new("Memory")
-                .open(&mut self.is_memory_window_open)
+                .open(&mut self.is_memory_viewer_open)
                 .show(ctx, |ui| {
                     self.mem_viewer.show(ui);
                 });
         }
 
-        // println!("{:?}", Instant::now());
-
         if !self.emulator.rom.is_empty() {
-            while self.cy_count < 17_476 {
-                self.cy_count += self.emulator.step() as u16;
+            while self.emulator.cycle_count < 17_476 {
+                self.emulator.cycle_count += self.emulator.step() as u16;
             }
 
             let buf = self
@@ -188,7 +183,7 @@ impl App for Kevboy {
                 // do nothing
             }
 
-            self.cy_count = 0;
+            self.emulator.cycle_count = 0;
             ctx.request_repaint();
         }
     }
