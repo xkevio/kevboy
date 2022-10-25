@@ -2,7 +2,7 @@ use eframe::epaint::Color32;
 
 use crate::{
     cpu::interrupts::{Interrupt, InterruptHandler},
-    ppu::{color_pallette::*, ppu_regs::PPURegisters},
+    ppu::{color_palette::*, ppu_regs::PPURegisters},
     LCD_HEIGHT, LCD_WIDTH,
 };
 
@@ -21,38 +21,48 @@ pub struct PPU {
     regs: PPURegisters,
     cycles_passed: u16,
     current_mode: Mode,
+    stat_block: bool,
 }
 
 impl PPU {
     pub fn new() -> Self {
         Self {
             bg_map: [Color32::from_rgb(127, 134, 15); 256 * 256],
-            current_line: vec![0b11; LCD_WIDTH],
+            current_line: Vec::new(),
             regs: PPURegisters::default(),
             cycles_passed: 0,
-            current_mode: Mode::Mode2,
+            current_mode: Mode::VBlank,
+            stat_block: false,
         }
     }
 
     // should tick 4 times per m-cycle
     // 456 clocks per scanline
     // 80 (Mode2) - 172 (Mode3) - 204 (HBlank) - VBlank
-    pub fn tick(&mut self, cycles_passed: u16, memory: &mut [u8], interrupt_handler: &mut InterruptHandler) {
+    pub fn tick(
+        &mut self,
+        cycles_passed: u16,
+        memory: &mut [u8],
+        interrupt_handler: &mut InterruptHandler,
+    ) {
         if self.regs.is_lcd_on() {
             self.cycles_passed += cycles_passed;
 
+            if self.cycles_passed == 4 && self.check_stat_interrupt() {
+                // println!("stat interrupt at ly: {:#04X}, lcdc: {:#010b} -- during cycle: {}", self.regs.ly, self.regs.lcdc, self.cycles_passed);
+                interrupt_handler.request_interrupt(Interrupt::STAT);
+            }
+
             if self.regs.ly_lyc() {
                 self.regs.stat |= 0b100;
-
-                if self.regs.stat & 0b1000000 != 0 {
-                    interrupt_handler.request_interrupt(Interrupt::STAT);
-                }
             } else {
                 self.regs.stat &= !(0b100);
             }
 
             if self.cycles_passed >= 456 {
                 self.regs.ly += 1;
+                self.stat_block = false;
+
                 if self.regs.ly > 153 {
                     self.regs.ly = 0;
                 }
@@ -108,14 +118,41 @@ impl PPU {
         }
     }
 
-    pub fn write_byte(&mut self, address: u16, value: u8) {
+    pub fn write_byte(
+        &mut self,
+        address: u16,
+        value: u8,
+        interrupt_handler: &mut InterruptHandler,
+    ) {
+        // println!("Write to {:#06X} = {:#06X}", address, value);
+
         match address {
-            0xFF40 => self.regs.lcdc = value,
-            0xFF41 => self.regs.stat = value,
+            0xFF40 => {
+                self.regs.lcdc = value;
+
+                log::info!("Write to LCDC");
+
+                if value & 0x80 == 0 {
+                    self.regs.ly = 0;
+                    self.cycles_passed = 0;
+                    self.stat_block = false;
+
+                    log::info!("lcd turn off: stat {:#010b}", self.regs.stat);
+                    self.change_mode(Mode::HBlank, interrupt_handler);
+                }
+            }
+            0xFF41 => self.regs.stat = ((1 << 7) | value) | (self.regs.stat & 0b11),
             0xFF42 => self.regs.scy = value,
             0xFF43 => self.regs.scx = value,
             0xFF44 => self.regs.ly = value,
-            0xFF45 => self.regs.lyc = value,
+            0xFF45 => {
+                self.regs.lyc = value;
+
+                // if self.check_stat_interrupt() {
+                //     println!("LYC write: STAT irq at ly: {}", self.regs.ly);
+                //     interrupt_handler.request_interrupt(Interrupt::STAT);
+                // }
+            }
             0xFF46 => self.regs.dma = value,
             0xFF47 => self.regs.bgp = value,
             0xFF48 => self.regs.opb0 = value,
@@ -150,11 +187,15 @@ impl PPU {
 
         // bg enable
         if self.regs.is_bg_enabled() {
+            log::info!("bg is enabled, ly {}", self.regs.ly);
+
             let tile_map_area = if self.regs.lcdc & 0b1000 != 0 {
                 0x9C00
             } else {
                 0x9800
             };
+
+            // println!("{:#06b} / {:#06X}", self.regs.lcdc, self.regs.lcdc);
 
             let unsigned_addressing = self.regs.lcdc & 0b10000 != 0;
             let tile_map_start = tile_map_area + (((self.regs.ly / 8) as usize) * 0x20);
@@ -174,16 +215,20 @@ impl PPU {
                         current_line.push(msb << 1 | lsb);
                     }
                 } else {
+                    // println!("SIGNED ADDRESSING");
+
                     let first_byte = if memory[index] <= 127 {
                         memory[0x9000 + (line_index * 8) + (2 * ly_bytes)]
                     } else {
-                        memory[0x9000 - ((line_index * 8) + (2 * ly_bytes))]
+                        let line_index = ((memory[index] as usize) % 128) * 16;
+                        memory[0x8800 + ((line_index * 8) + (2 * ly_bytes))]
                     };
 
                     let second_byte = if memory[index] <= 127 {
                         memory[0x9000 + (line_index * 8) + (2 * ly_bytes + 1)]
                     } else {
-                        memory[0x9000 - ((line_index * 8) + (2 * ly_bytes + 1))]
+                        let line_index = ((memory[index] as usize) % 128) * 16;
+                        memory[0x8800 + ((line_index * 8) + (2 * ly_bytes + 1))]
                     };
 
                     for i in (0..8).rev() {
@@ -195,23 +240,30 @@ impl PPU {
                 }
             }
 
+            // if self.regs.is_window_enabled() {
+            //     let window_tile_map_area = if self.regs.lcdc & 0b1000000 != 0 {
+            //         0x9C00
+            //     } else {
+            //         0x9800
+            //     };
+
+            //     let window_tile_map_start = window_tile_map_area + (((self.regs.ly / 8) as usize) * 0x20);
+
+            //     for index in window_tile_map_start..=(window_tile_map_start + 0x1F) {
+            //         if unsigned_addressing {
+
+            //         }
+            //     }
+            // }
+
             current_line
         } else {
+            log::info!("bg is disabled, ly {}", self.regs.ly);
             vec![0b00; LCD_WIDTH]
         }
     }
 
     fn draw_current_line(&mut self) {
-        fn bgp_color_from_value(value: u8) -> Color32 {
-            match value {
-                0b00 => LCD_WHITE,
-                0b01 => LCD_LIGHT_GRAY,
-                0b10 => LCD_GRAY,
-                0b11 => LCD_BLACK,
-                _ => unreachable!(),
-            }
-        }
-
         let y = self.regs.ly as usize;
 
         for i in 0..LCD_WIDTH {
@@ -231,28 +283,25 @@ impl PPU {
         if self.current_mode != to {
             match to {
                 Mode::VBlank => {
+                    self.regs.stat |= to as u8;
                     interrupt_handler.request_interrupt(Interrupt::VBlank);
-                    if self.regs.stat & 0b10000 != 0 {
-                        interrupt_handler.request_interrupt(Interrupt::STAT);
-                    }
                 }
-                Mode::HBlank => {
-                    self.regs.stat &= !(0b11);
-
-                    if self.regs.stat & 0b1000 != 0 {
-                        interrupt_handler.request_interrupt(Interrupt::STAT);
-                    }
-                }
-                Mode::Mode2 => {
-                    if self.regs.stat & 0b100000 != 0 {
-                        interrupt_handler.request_interrupt(Interrupt::STAT);
-                    }
-                }
-                _ => {}
+                Mode::HBlank => self.regs.stat &= !(0b11),
+                _ => self.regs.stat |= to as u8,
             }
 
-            self.regs.stat |= to as u8;
             self.current_mode = to;
         }
+    }
+
+    fn check_stat_interrupt(&mut self) -> bool {
+        let prev_stat = self.stat_block;
+        let current_stat = (self.regs.ly_lyc() && self.regs.stat & 0b1000000 != 0)
+            || (self.current_mode == Mode::HBlank && self.regs.stat & 0b1000 != 0)
+            || (self.current_mode == Mode::Mode2 && self.regs.stat & 0b100000 != 0)
+            || (self.current_mode == Mode::VBlank && self.regs.stat & 0b10000 != 0);
+
+        self.stat_block = current_stat;
+        prev_stat != current_stat && current_stat
     }
 }

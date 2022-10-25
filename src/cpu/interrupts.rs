@@ -1,4 +1,5 @@
 #[allow(clippy::upper_case_acronyms)]
+#[derive(Debug, Clone, Copy)]
 pub enum Interrupt {
     VBlank = 0x40,
     STAT = 0x48,
@@ -20,10 +21,10 @@ impl InterruptHandler {
         let timer = ((self.inte & 0b100) != 0).then_some(Interrupt::Timer);
         let serial = ((self.inte & 0b1000) != 0).then_some(Interrupt::Serial);
         let joypad = ((self.inte & 0b10000) != 0).then_some(Interrupt::Joypad);
-    
+
         [vblank, stat, timer, serial, joypad]
     }
-    
+
     pub fn is_interrupt_requested(&self, interrupt: &Interrupt) -> bool {
         match interrupt {
             Interrupt::VBlank => self.intf & 0b1 != 0,
@@ -33,26 +34,24 @@ impl InterruptHandler {
             Interrupt::Joypad => self.intf & 0b10000 != 0,
         }
     }
-    
-    pub fn reset_if(&mut self, interrupt: &Interrupt) -> u8 {
-        match interrupt {
-            Interrupt::VBlank => self.intf = self.intf & !(0b1),
-            Interrupt::STAT => self.intf = self.intf & !(0b10),
-            Interrupt::Timer => self.intf = self.intf & !(0b100),
-            Interrupt::Serial => self.intf = self.intf & !(0b1000),
-            Interrupt::Joypad => self.intf = self.intf & !(0b10000),
-        }
 
-        self.intf
+    pub fn reset_if(&mut self, interrupt: &Interrupt) {
+        match interrupt {
+            Interrupt::VBlank => self.intf &= !(0b1),
+            Interrupt::STAT => self.intf &= !(0b10),
+            Interrupt::Timer => self.intf &= !(0b100),
+            Interrupt::Serial => self.intf &= !(0b1000),
+            Interrupt::Joypad => self.intf &= !(0b10000),
+        }
     }
 
     pub fn request_interrupt(&mut self, interrupt: Interrupt) {
         match interrupt {
-            Interrupt::VBlank => self.intf &= 0b1,
-            Interrupt::STAT => self.intf &= 0b10,
-            Interrupt::Timer => self.intf &= 0b100,
-            Interrupt::Serial => self.intf &= 0b1000,
-            Interrupt::Joypad => self.intf &= 0b10000,
+            Interrupt::VBlank => self.intf |= 0b1,
+            Interrupt::STAT => self.intf |= 0b10,
+            Interrupt::Timer => self.intf |= 0b100,
+            Interrupt::Serial => self.intf |= 0b1000,
+            Interrupt::Joypad => self.intf |= 0b10000,
         }
     }
 }

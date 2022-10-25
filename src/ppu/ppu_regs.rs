@@ -26,4 +26,8 @@ impl PPURegisters {
     pub fn is_bg_enabled(&self) -> bool {
         self.lcdc & 0b1 != 0
     }
+
+    pub fn is_window_enabled(&self) -> bool {
+        self.lcdc & 0b100000 != 0
+    }
 }

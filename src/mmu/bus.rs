@@ -1,4 +1,8 @@
-use crate::{mmu::timer::Timers, ppu::ppu::PPU, cpu::{interrupts::InterruptHandler, cpu::CPU}};
+use crate::{
+    cpu::{cpu::CPU, interrupts::InterruptHandler},
+    mmu::timer::Timers,
+    ppu::ppu::PPU,
+};
 
 pub struct Bus {
     pub memory: [u8; 0x10000], // one memory array not ideal
@@ -10,7 +14,7 @@ pub struct Bus {
 impl Bus {
     pub fn new() -> Self {
         Self {
-            memory: [0u8; 0x10000],
+            memory: [0xFF; 0x10000],
             timer: Timers::new(),
             ppu: PPU::new(),
             interrupt_handler: InterruptHandler::default(),
@@ -33,7 +37,8 @@ impl Bus {
 
         self.timer.tick(cycles_passed);
         for _ in 0..4 {
-            self.ppu.tick(cycles_passed, &mut self.memory, &mut self.interrupt_handler);
+            self.ppu
+                .tick(cycles_passed, &mut self.memory, &mut self.interrupt_handler);
         }
 
         self.memory[0xFF04] = (self.timer.div >> 8) as u8;
@@ -68,7 +73,7 @@ impl Bus {
     pub fn write_byte(&mut self, address: u16, byte: u8) {
         self.tick(1);
         match address {
-            0x0000..=0x7FFF => {},
+            0x0000..=0x7FFF => {}
             0x8000..=0x9FFF => {
                 // println!("VRAM access to {:#08X}", address);
                 self.memory[address as usize] = byte;
@@ -81,9 +86,9 @@ impl Bus {
                 // println!("WRAM access to {:#08X}", address);
                 self.memory[address as usize] = byte;
             }
-            0xE000..=0xFDFF => {}, // println!("Echo RAM, ignore write"),
-            0xFE00..=0xFE9F => {}, // println!("OAM write, ignore"),
-            0xFEA0..=0xFEFF => {}, // println!("Not usable, usage of this area is prohibited"),
+            0xE000..=0xFDFF => {} // println!("Echo RAM, ignore write"),
+            0xFE00..=0xFE9F => {} // println!("OAM write, ignore"),
+            0xFEA0..=0xFEFF => {} // println!("Not usable, usage of this area is prohibited"),
             0xFF00..=0xFF7F => {
                 match address {
                     0xFF01 => eprint!("{}", byte as char), // SB output for blargg tests
@@ -104,7 +109,10 @@ impl Bus {
                         self.memory[address as usize] = byte;
                         self.timer.tac = byte;
                     }
-                    0xFF40..=0xFF4B => self.ppu.write_byte(address, byte),
+                    0xFF40..=0xFF4B => {
+                        self.ppu
+                            .write_byte(address, byte, &mut self.interrupt_handler)
+                    }
                     0xFF0F => {
                         self.interrupt_handler.intf = byte;
                         self.memory[address as usize] = byte;
@@ -129,8 +137,17 @@ impl Bus {
 
     pub fn handle_interrupts(&mut self, cpu: &mut CPU) -> bool {
         if cpu.ime {
-            for interrupt in self.interrupt_handler.get_enabled_interrupts().into_iter().flatten() {
+            for interrupt in self
+                .interrupt_handler
+                .get_enabled_interrupts()
+                .into_iter()
+                .flatten()
+            {
                 if self.interrupt_handler.is_interrupt_requested(&interrupt) {
+                    self.interrupt_handler.reset_if(&interrupt);
+                    cpu.ime = false;
+                    cpu.halt = false;
+
                     let pc_bytes = cpu.registers.PC.to_be_bytes();
                     self.tick(2); // 2 nop delay
 
@@ -140,17 +157,13 @@ impl Bus {
                     cpu.registers.SP -= 1;
                     self.write_byte(cpu.registers.SP, pc_bytes[1]);
 
-                    let intf = self.interrupt_handler.reset_if(&interrupt);
-                    self.write_byte(0xFF0F, intf);
-
                     cpu.registers.PC = interrupt as u16;
-
-                    cpu.ime = false;
-                    cpu.halt = false;
+                    self.tick(1);
 
                     return true;
                 }
             }
+
             return false;
         } else {
             if self.interrupt_handler.inte & self.interrupt_handler.intf & 0x1F != 0 {
@@ -166,14 +179,18 @@ impl Bus {
     ///
     /// Only needed if no boot rom is used.
     fn initialize_internal_registers(&mut self) {
-        self.memory[0xFF40] = 0x91; // LCDC
-        self.memory[0xFF07] = 0xF8; // TAC
-        self.memory[0xFF0F] = 0xE1; // IF
         self.memory[0xFF00] = 0xCF; // P1 / JOYP
-        self.memory[0xFF41] = 0x81; // STAT
-        self.memory[0xFF46] = 0xFF; // DMA
-        self.memory[0xFF47] = 0xFC; // BGP
+        self.memory[0xFF07] = 0xF8; // TAC
         self.memory[0xFF4D] = 0xFF; // KEY1
         self.memory[0xFF50] = 0x01; // Disable BOOT ROM
+        self.interrupt_handler.intf = 0xE1; // IF
+        self.ppu
+            .write_byte(0xFF40, 0x91, &mut self.interrupt_handler); // LCDC
+        self.ppu
+            .write_byte(0xFF41, 0x81, &mut self.interrupt_handler); // STAT
+        self.ppu
+            .write_byte(0xFF46, 0xFF, &mut self.interrupt_handler); // DMA
+        self.ppu
+            .write_byte(0xFF47, 0xFC, &mut self.interrupt_handler); // BGP
     }
 }
