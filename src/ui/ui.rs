@@ -171,7 +171,7 @@ impl App for Kevboy {
                 .emulator
                 .bus
                 .ppu
-                .get_frame_viewport()
+                .test_map
                 .iter()
                 .flat_map(|c| [c.r(), c.g(), c.b(), c.a()])
                 .collect();

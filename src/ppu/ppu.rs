@@ -16,10 +16,14 @@ enum Mode {
 
 #[allow(clippy::upper_case_acronyms)]
 pub struct PPU {
-    pub bg_map: [Color32; 256 * 256],
+    // complete background map with all tiles
+    // pub bg_map: [Color32; 256 * 256],
+    pub test_map: [Color32; LCD_WIDTH * LCD_HEIGHT],
     current_line: Vec<u8>,
+
     regs: PPURegisters,
     cycles_passed: u16,
+
     current_mode: Mode,
     stat_block: bool,
 }
@@ -27,11 +31,12 @@ pub struct PPU {
 impl PPU {
     pub fn new() -> Self {
         Self {
-            bg_map: [Color32::from_rgb(127, 134, 15); 256 * 256],
+            // bg_map: [Color32::from_rgb(127, 134, 15); 256 * 256],
+            test_map: [Color32::from_rgb(127, 134, 15); LCD_WIDTH * LCD_HEIGHT],
             current_line: Vec::new(),
             regs: PPURegisters::default(),
             cycles_passed: 0,
-            current_mode: Mode::VBlank,
+            current_mode: Mode::HBlank,
             stat_block: false,
         }
     }
@@ -49,7 +54,7 @@ impl PPU {
             self.cycles_passed += cycles_passed;
 
             if self.cycles_passed == 4 && self.check_stat_interrupt() {
-                // println!("stat interrupt at ly: {:#04X}, lcdc: {:#010b} -- during cycle: {}", self.regs.ly, self.regs.lcdc, self.cycles_passed);
+                // println!("stat interrupt at ly: {:#04X}, lcdc: {:#010b}, ({}, {})", self.regs.ly, self.regs.lcdc, self.regs.scx, self.regs.scy);
                 interrupt_handler.request_interrupt(Interrupt::STAT);
             }
 
@@ -163,46 +168,48 @@ impl PPU {
         }
     }
 
-    pub fn get_frame_viewport(&self) -> [Color32; LCD_WIDTH * LCD_HEIGHT] {
-        let mut viewport = [Color32::WHITE; LCD_WIDTH * LCD_HEIGHT];
+    // pub fn get_frame_viewport(&self) -> [Color32; LCD_WIDTH * LCD_HEIGHT] {
+    //     let mut viewport = [Color32::WHITE; LCD_WIDTH * LCD_HEIGHT];
 
-        for y in 0..LCD_HEIGHT {
-            for x in 0..LCD_WIDTH {
-                let wrapping_y = (y + (self.regs.scy as usize)) % 256;
-                let wrapping_x = (x + (self.regs.scx as usize)) % 256;
+    //     for y in 0..LCD_HEIGHT {
+    //         for x in 0..LCD_WIDTH {
+    //             let wrapping_y = (y + (self.regs.scy as usize)) % 256;
+    //             let wrapping_x = (x + (self.regs.scx as usize)) % 256;
 
-                let index = wrapping_y * 256 + wrapping_x;
-                let new_index = y * LCD_WIDTH + x;
+    //             let index = wrapping_y * 256 + wrapping_x;
+    //             let new_index = y * LCD_WIDTH + x;
 
-                let bg_pixel = self.bg_map[index];
-                viewport[new_index] = bg_pixel;
-            }
-        }
+    //             let bg_pixel = self.bg_map[index];
+    //             viewport[new_index] = bg_pixel;
+    //         }
+    //     }
 
-        viewport
-    }
+    //     viewport
+    // }
 
     fn get_current_line(&self, memory: &mut [u8]) -> Vec<u8> {
         let mut current_line: Vec<u8> = Vec::new();
 
         // bg enable
         if self.regs.is_bg_enabled() {
-            log::info!("bg is enabled, ly {}", self.regs.ly);
-
             let tile_map_area = if self.regs.lcdc & 0b1000 != 0 {
                 0x9C00
             } else {
                 0x9800
             };
 
-            // println!("{:#06b} / {:#06X}", self.regs.lcdc, self.regs.lcdc);
+            let yy = self.regs.ly + self.regs.scy;
 
             let unsigned_addressing = self.regs.lcdc & 0b10000 != 0;
-            let tile_map_start = tile_map_area + (((self.regs.ly / 8) as usize) * 0x20);
+            let tile_map_start = tile_map_area + (((yy / 8) as usize) * 0x20);
+
+            // println!("{:#06X} + {:#06X} + {:#06X} = {:#06X}", tile_map_area, (((yy / 8) as usize) * 0x20), self.regs.scx, tile_map_start);
 
             for index in tile_map_start..=(tile_map_start + 0x1F) {
+                // println!("{:#06X}, scy: {}", index, self.regs.scy);
+
                 let line_index = (memory[index] as usize) * 16;
-                let ly_bytes = (self.regs.ly % 8) as usize;
+                let ly_bytes = (yy % 8) as usize;
 
                 if unsigned_addressing {
                     let first_byte = memory[0x8000 + (line_index) + (2 * ly_bytes)];
@@ -218,17 +225,17 @@ impl PPU {
                     // println!("SIGNED ADDRESSING");
 
                     let first_byte = if memory[index] <= 127 {
-                        memory[0x9000 + (line_index * 8) + (2 * ly_bytes)]
+                        memory[0x9000 + (line_index) + (2 * ly_bytes)]
                     } else {
                         let line_index = ((memory[index] as usize) % 128) * 16;
-                        memory[0x8800 + ((line_index * 8) + (2 * ly_bytes))]
+                        memory[0x8800 + ((line_index) + (2 * ly_bytes))]
                     };
 
                     let second_byte = if memory[index] <= 127 {
-                        memory[0x9000 + (line_index * 8) + (2 * ly_bytes + 1)]
+                        memory[0x9000 + (line_index) + (2 * ly_bytes + 1)]
                     } else {
                         let line_index = ((memory[index] as usize) % 128) * 16;
-                        memory[0x8800 + ((line_index * 8) + (2 * ly_bytes + 1))]
+                        memory[0x8800 + ((line_index) + (2 * ly_bytes + 1))]
                     };
 
                     for i in (0..8).rev() {
@@ -256,6 +263,7 @@ impl PPU {
             //     }
             // }
 
+            current_line.rotate_left(self.regs.scx as usize);
             current_line
         } else {
             log::info!("bg is disabled, ly {}", self.regs.ly);
@@ -266,8 +274,18 @@ impl PPU {
     fn draw_current_line(&mut self) {
         let y = self.regs.ly as usize;
 
+        // for i in 0..LCD_WIDTH {
+        //     self.bg_map[y * 256 + i] = match self.current_line[i] {
+        //         0b00 => bgp_color_from_value(self.regs.bgp & 0b11),
+        //         0b01 => bgp_color_from_value((self.regs.bgp & 0b1100) >> 2),
+        //         0b10 => bgp_color_from_value((self.regs.bgp & 0b110000) >> 4),
+        //         0b11 => bgp_color_from_value((self.regs.bgp & 0b11000000) >> 6),
+        //         _ => unreachable!(),
+        //     }
+        // }
+
         for i in 0..LCD_WIDTH {
-            self.bg_map[(y * 256 + i)] = match self.current_line[i] {
+            self.test_map[y * LCD_WIDTH + i] = match self.current_line[i] {
                 0b00 => bgp_color_from_value(self.regs.bgp & 0b11),
                 0b01 => bgp_color_from_value((self.regs.bgp & 0b1100) >> 2),
                 0b10 => bgp_color_from_value((self.regs.bgp & 0b110000) >> 4),
