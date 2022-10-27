@@ -13,7 +13,7 @@ pub struct Registers {
     pub PC: u16,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum Flag {
     Zero,
     Substraction,
@@ -21,6 +21,7 @@ pub enum Flag {
     Carry,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum Regs {
     AF,
     BC,

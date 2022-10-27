@@ -1,6 +1,6 @@
 use crate::{
     cpu::{cpu::CPU, interrupts::InterruptHandler},
-    mmu::timer::Timers,
+    mmu::{timer::Timers, mmio::MMIO},
     ppu::ppu::PPU,
 };
 
@@ -63,7 +63,7 @@ impl Bus {
         self.tick(1);
 
         match address {
-            0xFF40..=0xFF4B => self.ppu.read_byte(address),
+            0xFF40..=0xFF4B => self.ppu.read(address),
             0xFF0F => self.interrupt_handler.intf,
             0xFFFF => self.interrupt_handler.inte,
             _ => self.memory[address as usize],
@@ -110,8 +110,7 @@ impl Bus {
                         self.timer.tac = byte;
                     }
                     0xFF40..=0xFF4B => {
-                        self.ppu
-                            .write_byte(address, byte, &mut self.interrupt_handler)
+                        self.ppu.write(address, byte);
                     }
                     0xFF0F => {
                         self.interrupt_handler.intf = byte;
@@ -143,8 +142,8 @@ impl Bus {
                 .into_iter()
                 .flatten()
             {
-                if self.interrupt_handler.is_interrupt_requested(&interrupt) {
-                    self.interrupt_handler.reset_if(&interrupt);
+                if self.interrupt_handler.is_interrupt_requested(interrupt) {
+                    self.interrupt_handler.reset_if(interrupt);
                     cpu.ime = false;
                     cpu.halt = false;
 
@@ -184,13 +183,9 @@ impl Bus {
         self.memory[0xFF4D] = 0xFF; // KEY1
         self.memory[0xFF50] = 0x01; // Disable BOOT ROM
         self.interrupt_handler.intf = 0xE1; // IF
-        self.ppu
-            .write_byte(0xFF40, 0x91, &mut self.interrupt_handler); // LCDC
-        self.ppu
-            .write_byte(0xFF41, 0x81, &mut self.interrupt_handler); // STAT
-        self.ppu
-            .write_byte(0xFF46, 0xFF, &mut self.interrupt_handler); // DMA
-        self.ppu
-            .write_byte(0xFF47, 0xFC, &mut self.interrupt_handler); // BGP
+        self.ppu.write(0xFF40, 0x91); // LCDC
+        self.ppu.write(0xFF41, 0x81); // STAT
+        self.ppu.write(0xFF46, 0xFF); // DMA
+        self.ppu.write(0xFF47, 0xFC); // BGP
     }
 }

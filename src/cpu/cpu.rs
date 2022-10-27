@@ -1244,7 +1244,7 @@ impl CPU {
                 self.registers.A = bus.read_byte(self.registers.SP);
 
                 // clear out lower nibble since it should always be zero
-                self.registers.F &= !(1 | 1 << 1 | 1 << 2 | 1 << 3)
+                self.registers.F &= !(1 | 1 << 1 | 1 << 2 | 1 << 3);
             }
             _ => {}
         }

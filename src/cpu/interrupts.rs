@@ -25,7 +25,7 @@ impl InterruptHandler {
         [vblank, stat, timer, serial, joypad]
     }
 
-    pub fn is_interrupt_requested(&self, interrupt: &Interrupt) -> bool {
+    pub fn is_interrupt_requested(&self, interrupt: Interrupt) -> bool {
         match interrupt {
             Interrupt::VBlank => self.intf & 0b1 != 0,
             Interrupt::STAT => self.intf & 0b10 != 0,
@@ -35,7 +35,7 @@ impl InterruptHandler {
         }
     }
 
-    pub fn reset_if(&mut self, interrupt: &Interrupt) {
+    pub fn reset_if(&mut self, interrupt: Interrupt) {
         match interrupt {
             Interrupt::VBlank => self.intf &= !(0b1),
             Interrupt::STAT => self.intf &= !(0b10),

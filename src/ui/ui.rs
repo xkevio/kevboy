@@ -19,8 +19,11 @@ use crate::ui::frame_history::FrameHistory;
 
 pub struct Kevboy {
     emulator: Emulator,
-    frame: Vec<u8>,
+    frame_buffer: Vec<u8>,
+
+    // To count and calculate frames per second, smoothed
     history: FrameHistory,
+
     mem_viewer: MemoryViewer,
     is_memory_viewer_open: bool,
 }
@@ -29,8 +32,10 @@ impl Default for Kevboy {
     fn default() -> Self {
         Self {
             emulator: Emulator::new(),
-            frame: [127, 134, 15, 255].repeat(LCD_WIDTH * LCD_HEIGHT),
+            frame_buffer: [127, 134, 15, 255].repeat(LCD_WIDTH * LCD_HEIGHT),
+
             history: FrameHistory::default(),
+
             mem_viewer: MemoryViewer::new(),
             is_memory_viewer_open: false,
         }
@@ -38,15 +43,19 @@ impl Default for Kevboy {
 }
 
 impl App for Kevboy {
-    fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
-        self.history.update(ctx, _frame);
-        _frame.set_window_title(&format!("Kevboy-rs ({} fps)", self.history.fps().trunc()));
+    fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
+        self.history.update(ctx, frame);
+        frame.set_window_title(&format!("Kevboy-rs ({} fps)", self.history.fps().trunc()));
 
         let image = RetainedImage::from_color_image(
             "frame",
-            ColorImage::from_rgba_unmultiplied([LCD_WIDTH, LCD_HEIGHT], &self.frame),
+            ColorImage::from_rgba_unmultiplied([LCD_WIDTH, LCD_HEIGHT], &self.frame_buffer),
         )
         .with_texture_filter(eframe::egui::TextureFilter::Nearest);
+
+        // ----------------------------------
+        //      Start of UI declarations
+        // ----------------------------------
 
         TopBottomPanel::top("menu").show(ctx, |ui| {
             menu::bar(ui, |ui| {
@@ -162,29 +171,39 @@ impl App for Kevboy {
                 });
         }
 
+        // ----------------------------------
+        //      End of UI declarations
+        // ----------------------------------
+
         if !self.emulator.rom.is_empty() {
-            while self.emulator.cycle_count < 17_476 {
-                self.emulator.cycle_count += self.emulator.step() as u16;
-            }
-
-            let buf = self
-                .emulator
-                .bus
-                .ppu
-                .test_map
-                .iter()
-                .flat_map(|c| [c.r(), c.g(), c.b(), c.a()])
-                .collect();
-
-            self.frame = buf;
-
-            let start = Instant::now();
-            while start.elapsed() < Duration::from_micros(16667) {
-                // do nothing
-            }
-
-            self.emulator.cycle_count = 0;
+            self.run();
             ctx.request_repaint();
         }
+    }
+}
+
+impl Kevboy {
+    fn run(&mut self) {
+        while self.emulator.cycle_count < 17_476 {
+            self.emulator.cycle_count += self.emulator.step() as u16;
+        }
+
+        let buf = self
+            .emulator
+            .bus
+            .ppu
+            .frame_buffer
+            .iter()
+            .flat_map(|c| [c.r(), c.g(), c.b(), c.a()])
+            .collect();
+
+        self.frame_buffer = buf;
+
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_micros(16667) {
+            // do nothing
+        }
+
+        self.emulator.cycle_count = 0;
     }
 }
