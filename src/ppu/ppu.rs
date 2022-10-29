@@ -75,10 +75,6 @@ impl MMIO for PPU {
 }
 
 impl PPU {
-    pub fn reset_window_line(&mut self) {
-        self.internal_window_line = 0;
-    }
-
     pub fn new() -> Self {
         Self {
             frame_buffer: [Color32::from_rgb(127, 134, 15); LCD_WIDTH * LCD_HEIGHT],
@@ -112,7 +108,6 @@ impl PPU {
 
             // ly=lyc check happens on the 4th cycle of the line
             if self.cycles_passed == 4 && self.check_stat_interrupt() {
-                println!("request at ly: {}", self.regs.ly);
                 interrupt_handler.request_interrupt(Interrupt::STAT);
             }
 
@@ -184,6 +179,7 @@ impl PPU {
 
                 if self.regs.ly == 144 {
                     self.change_mode(Mode::VBlank, Some(interrupt_handler));
+                    self.internal_window_line = 0;
                 } else {
                     self.change_mode(Mode::Mode2, Some(interrupt_handler));
                 }
@@ -230,14 +226,13 @@ impl PPU {
                     let win_y = self.internal_window_line;
                     let tile_map_start = win_tile_map_area + (((win_y / 8) as usize) * 0x20);
 
-                    println!("{:#06X}, ly: {}", tile_map_start, self.regs.ly);
-
                     for (j, index) in (tile_map_start..=(tile_map_start + 0x1F)).enumerate() {
                         let tile_row = self.get_tile_row(memory, unsigned_addressing, index, win_y);
 
                         for i in 0..8 {
                             if (((self.regs.wx - 7) as usize) + i + (j * 8)) < 256 {
-                                current_line[((self.regs.wx - 7) as usize) + i + (j * 8)] = tile_row[i];
+                                current_line[((self.regs.wx - 7) as usize) + i + (j * 8)] =
+                                    tile_row[i];
                             }
                         }
                     }

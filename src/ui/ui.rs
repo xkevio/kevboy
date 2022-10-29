@@ -204,7 +204,6 @@ impl Kevboy {
             // do nothing
         }
 
-        self.emulator.bus.ppu.reset_window_line();
         self.emulator.cycle_count = 0;
     }
 }

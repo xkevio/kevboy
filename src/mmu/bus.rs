@@ -152,6 +152,8 @@ impl Bus {
                     cpu.ime = false;
                     cpu.halt = false;
 
+                    println!("{:?} is being serviced!", interrupt);
+
                     let pc_bytes = cpu.registers.PC.to_be_bytes();
                     self.tick(2); // 2 nop delay
 
