@@ -24,10 +24,14 @@ impl PPURegisters {
     }
 
     pub fn is_bg_enabled(&self) -> bool {
-        self.lcdc & 0b1 != 0
+        self.lcdc & 0x1 != 0
     }
 
     pub fn is_window_enabled(&self) -> bool {
-        self.lcdc & 0b100000 != 0
+        self.lcdc & 0x20 != 0
+    }
+
+    pub fn is_window_visible(&self) -> bool {
+        (0..=166).contains(&self.wx) && (0..=143).contains(&self.wy)
     }
 }

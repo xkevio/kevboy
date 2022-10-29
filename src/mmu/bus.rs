@@ -1,6 +1,6 @@
 use crate::{
     cpu::{cpu::CPU, interrupts::InterruptHandler},
-    mmu::{timer::Timers, mmio::MMIO},
+    mmu::{mmio::MMIO, timer::Timers},
     ppu::ppu::PPU,
 };
 
@@ -91,6 +91,11 @@ impl Bus {
             0xFEA0..=0xFEFF => {} // println!("Not usable, usage of this area is prohibited"),
             0xFF00..=0xFF7F => {
                 match address {
+                    0xFF00 => {
+                        self.memory[address as usize] = (self.memory[address as usize] & 0xC0)
+                            | byte
+                            | (self.memory[address as usize] & 0xF)
+                    }
                     0xFF01 => eprint!("{}", byte as char), // SB output for blargg tests
                     0xFF04 => {
                         // DIV register: any write resets it to 0
@@ -182,7 +187,9 @@ impl Bus {
         self.memory[0xFF07] = 0xF8; // TAC
         self.memory[0xFF4D] = 0xFF; // KEY1
         self.memory[0xFF50] = 0x01; // Disable BOOT ROM
+
         self.interrupt_handler.intf = 0xE1; // IF
+
         self.ppu.write(0xFF40, 0x91); // LCDC
         self.ppu.write(0xFF41, 0x81); // STAT
         self.ppu.write(0xFF46, 0xFF); // DMA

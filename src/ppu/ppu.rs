@@ -2,8 +2,9 @@ use eframe::epaint::Color32;
 
 use crate::{
     cpu::interrupts::{Interrupt, InterruptHandler},
+    mmu::mmio::MMIO,
     ppu::{color_palette::*, ppu_regs::PPURegisters},
-    LCD_HEIGHT, LCD_WIDTH, mmu::mmio::MMIO,
+    LCD_HEIGHT, LCD_WIDTH,
 };
 
 #[derive(PartialEq, Clone, Copy)]
@@ -25,6 +26,8 @@ pub struct PPU {
 
     current_mode: Mode,
     stat_block: bool,
+
+    internal_window_line: u8,
 }
 
 impl MMIO for PPU {
@@ -72,6 +75,10 @@ impl MMIO for PPU {
 }
 
 impl PPU {
+    pub fn reset_window_line(&mut self) {
+        self.internal_window_line = 0;
+    }
+
     pub fn new() -> Self {
         Self {
             frame_buffer: [Color32::from_rgb(127, 134, 15); LCD_WIDTH * LCD_HEIGHT],
@@ -82,6 +89,8 @@ impl PPU {
 
             current_mode: Mode::HBlank,
             stat_block: false,
+
+            internal_window_line: 0,
         }
     }
 
@@ -103,6 +112,7 @@ impl PPU {
 
             // ly=lyc check happens on the 4th cycle of the line
             if self.cycles_passed == 4 && self.check_stat_interrupt() {
+                println!("request at ly: {}", self.regs.ly);
                 interrupt_handler.request_interrupt(Interrupt::STAT);
             }
 
@@ -124,9 +134,10 @@ impl PPU {
         }
     }
 
-
     fn turn_lcd_off(&mut self) {
         self.regs.ly = 0;
+        self.internal_window_line = 0;
+
         self.cycles_passed = 0;
         self.stat_block = false;
 
@@ -154,6 +165,14 @@ impl PPU {
                 }
             }
             252 => {
+                // check at end of mode 3 technically
+                if self.regs.is_window_visible()
+                    && self.regs.ly >= self.regs.wy
+                    && self.regs.is_window_enabled()
+                {
+                    self.internal_window_line += 1;
+                }
+
                 self.change_mode(Mode::HBlank, Some(interrupt_handler));
 
                 // add line to buffer
@@ -171,15 +190,17 @@ impl PPU {
 
                 self.cycles_passed -= 456;
             }
-            _ => {},
+            _ => {}
         }
     }
 
-    fn get_current_line(&self, memory: &mut [u8]) -> Vec<u8> {
+    fn get_current_line(&mut self, memory: &mut [u8]) -> Vec<u8> {
         let mut current_line: Vec<u8> = Vec::new();
 
         // bg enable
         if self.regs.is_bg_enabled() {
+            let unsigned_addressing = self.regs.lcdc & 0b10000 != 0;
+
             let bg_tile_map_area = if self.regs.lcdc & 0b1000 == 0 {
                 0x9800
             } else {
@@ -187,53 +208,94 @@ impl PPU {
             };
 
             let adjusted_y = self.regs.ly + self.regs.scy;
-
-            let unsigned_addressing = self.regs.lcdc & 0b10000 != 0;
             let tile_map_start = bg_tile_map_area + (((adjusted_y / 8) as usize) * 0x20);
 
             for index in tile_map_start..=(tile_map_start + 0x1F) {
-                let line_index = (memory[index] as usize) * 16;
-                let ly_bytes = (adjusted_y % 8) as usize;
+                let tile_row = self.get_tile_row(memory, unsigned_addressing, index, adjusted_y);
+                current_line.extend(tile_row);
+            }
 
-                if unsigned_addressing {
-                    let first_byte = memory[0x8000 + line_index + (2 * ly_bytes)];
-                    let second_byte = memory[0x8000 + line_index + (2 * ly_bytes + 1)];
+            // Apply SCX to the background layer
+            current_line.rotate_left(self.regs.scx as usize);
 
-                    for i in (0..8).rev() {
-                        let lsb = (first_byte & (1 << i)) >> i;
-                        let msb = (second_byte & (1 << i)) >> i;
-
-                        current_line.push(msb << 1 | lsb);
-                    }
-                } else {
-                    let first_byte = if memory[index] <= 127 {
-                        memory[0x9000 + line_index + (2 * ly_bytes)]
+            // Draw window over bg if enabled and visible
+            if self.regs.is_window_enabled() {
+                if self.regs.is_window_visible() && self.regs.ly >= self.regs.wy {
+                    let win_tile_map_area = if self.regs.lcdc & 0x40 == 0 {
+                        0x9800
                     } else {
-                        let line_index = ((memory[index] as usize) % 128) * 16;
-                        memory[0x8800 + line_index + (2 * ly_bytes)]
+                        0x9C00
                     };
 
-                    let second_byte = if memory[index] <= 127 {
-                        memory[0x9000 + line_index + (2 * ly_bytes + 1)]
-                    } else {
-                        let line_index = ((memory[index] as usize) % 128) * 16;
-                        memory[0x8800 + line_index + (2 * ly_bytes + 1)]
-                    };
+                    let win_y = self.internal_window_line;
+                    let tile_map_start = win_tile_map_area + (((win_y / 8) as usize) * 0x20);
 
-                    for i in (0..8).rev() {
-                        let lsb = (first_byte & (1 << i)) >> i;
-                        let msb = (second_byte & (1 << i)) >> i;
+                    println!("{:#06X}, ly: {}", tile_map_start, self.regs.ly);
 
-                        current_line.push((msb << 1) | lsb);
+                    for (j, index) in (tile_map_start..=(tile_map_start + 0x1F)).enumerate() {
+                        let tile_row = self.get_tile_row(memory, unsigned_addressing, index, win_y);
+
+                        for i in 0..8 {
+                            if (((self.regs.wx - 7) as usize) + i + (j * 8)) < 256 {
+                                current_line[((self.regs.wx - 7) as usize) + i + (j * 8)] = tile_row[i];
+                            }
+                        }
                     }
                 }
             }
 
-            current_line.rotate_left(self.regs.scx as usize);
             current_line
         } else {
             vec![0b00; LCD_WIDTH]
         }
+    }
+
+    fn get_tile_row(
+        &self,
+        memory: &[u8],
+        unsigned_addressing: bool,
+        index: usize,
+        y: u8,
+    ) -> [u8; 8] {
+        let mut current_line: [u8; 8] = [0; 8];
+
+        let line_index = (memory[index] as usize) * 16;
+        let ly_bytes = (y % 8) as usize;
+
+        if unsigned_addressing {
+            let first_byte = memory[0x8000 + line_index + (2 * ly_bytes)];
+            let second_byte = memory[0x8000 + line_index + (2 * ly_bytes + 1)];
+
+            for i in (0..8).rev() {
+                let lsb = (first_byte & (1 << i)) >> i;
+                let msb = (second_byte & (1 << i)) >> i;
+
+                current_line[7 - i] = msb << 1 | lsb;
+            }
+        } else {
+            let first_byte = if memory[index] <= 127 {
+                memory[0x9000 + line_index + (2 * ly_bytes)]
+            } else {
+                let line_index = ((memory[index] as usize) % 128) * 16;
+                memory[0x8800 + line_index + (2 * ly_bytes)]
+            };
+
+            let second_byte = if memory[index] <= 127 {
+                memory[0x9000 + line_index + (2 * ly_bytes + 1)]
+            } else {
+                let line_index = ((memory[index] as usize) % 128) * 16;
+                memory[0x8800 + line_index + (2 * ly_bytes + 1)]
+            };
+
+            for i in (0..8).rev() {
+                let lsb = (first_byte & (1 << i)) >> i;
+                let msb = (second_byte & (1 << i)) >> i;
+
+                current_line[7 - i] = msb << 1 | lsb;
+            }
+        }
+
+        current_line
     }
 
     fn draw_current_line(&mut self) {

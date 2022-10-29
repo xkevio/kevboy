@@ -1,5 +1,5 @@
 /// Trait for read / write functions separate from the bus
-/// 
+///
 /// Ideal for memory mapped registers.
 pub trait MMIO {
     fn read(&self, address: u16) -> u8;
