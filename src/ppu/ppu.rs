@@ -3,7 +3,7 @@ use eframe::epaint::Color32;
 use crate::{
     cpu::interrupts::{Interrupt, InterruptHandler},
     mmu::mmio::MMIO,
-    ppu::{color_palette::*, ppu_regs::PPURegisters},
+    ppu::{color_palette::*, ppu_regs::PPURegisters, sprite, sprite::Sprite},
     LCD_HEIGHT, LCD_WIDTH,
 };
 
@@ -19,15 +19,16 @@ enum Mode {
 pub struct PPU {
     // LCD screen array, current viewport
     pub frame_buffer: [Color32; LCD_WIDTH * LCD_HEIGHT],
-    current_line: Vec<u8>,
+    current_line: Vec<Color32>,
 
     regs: PPURegisters,
-    cycles_passed: u16,
+    cycles_passed: i16,
 
     current_mode: Mode,
     stat_block: bool,
 
     internal_window_line: u8,
+    current_sprites: Vec<Sprite>,
 }
 
 impl MMIO for PPU {
@@ -77,7 +78,7 @@ impl MMIO for PPU {
 impl PPU {
     pub fn new() -> Self {
         Self {
-            frame_buffer: [Color32::from_rgb(127, 134, 15); LCD_WIDTH * LCD_HEIGHT],
+            frame_buffer: [LCD_WHITE; LCD_WIDTH * LCD_HEIGHT],
             current_line: Vec::new(),
 
             regs: PPURegisters::default(),
@@ -87,6 +88,7 @@ impl PPU {
             stat_block: false,
 
             internal_window_line: 0,
+            current_sprites: Vec::new(),
         }
     }
 
@@ -95,7 +97,7 @@ impl PPU {
     // 80 (Mode2) - 172 (Mode3) - 204 (HBlank) - VBlank
     pub fn tick(
         &mut self,
-        cycles_passed: u16,
+        cycles_passed: i16,
         memory: &mut [u8],
         interrupt_handler: &mut InterruptHandler,
     ) {
@@ -121,7 +123,7 @@ impl PPU {
                         self.regs.ly = 0;
                     }
 
-                    self.cycles_passed -= 456;
+                    self.cycles_passed = -1;
                 }
             }
 
@@ -148,8 +150,14 @@ impl PPU {
         match self.cycles_passed {
             0 => {
                 self.change_mode(Mode::Mode2, Some(interrupt_handler));
-                // scan oam for sprites
-                // TODO
+
+                // TODO: scan oam for sprites
+                let oam = &memory[0xFE00..=0xFE9F];
+                self.current_sprites = sprite::get_current_sprites_per_line(
+                    self.regs.ly,
+                    self.regs.is_sprite_8x8(),
+                    oam,
+                );
             }
             80 => {
                 self.change_mode(Mode::Mode3, Some(interrupt_handler));
@@ -184,14 +192,14 @@ impl PPU {
                     self.change_mode(Mode::Mode2, Some(interrupt_handler));
                 }
 
-                self.cycles_passed -= 456;
+                self.cycles_passed = -1;
             }
             _ => {}
         }
     }
 
-    fn get_current_line(&mut self, memory: &mut [u8]) -> Vec<u8> {
-        let mut current_line: Vec<u8> = Vec::new();
+    fn get_current_line(&mut self, memory: &mut [u8]) -> Vec<Color32> {
+        let mut current_line: Vec<Color32> = Vec::new();
 
         // bg enable
         if self.regs.is_bg_enabled() {
@@ -238,11 +246,43 @@ impl PPU {
                     }
                 }
             }
-
-            current_line
-        } else {
-            vec![0b00; LCD_WIDTH]
         }
+
+        if current_line.is_empty() {
+            current_line = vec![LCD_WHITE; LCD_WIDTH];
+        }
+
+        if self.regs.is_obj_enabled() {
+            for sprite in &self.current_sprites {
+                let sprite_tile = 0x8000 + (sprite.tile_index as usize) * 16;
+                let ly_bytes = (self.regs.ly % 8) as usize;
+
+                let palette = if sprite.get_obp_num() == 0 {
+                    Palette::OBP0(self.regs.opb0)
+                } else {
+                    Palette::OBP1(self.regs.opb1)
+                };
+
+                if sprite.is_obj_prio() {
+                    if !sprite.is_x_flipped() && !sprite.is_y_flipped() {
+                        let first_byte = memory[sprite_tile + (2 * ly_bytes)];
+                        let second_byte = memory[sprite_tile + (2 * ly_bytes + 1)];
+
+                        for i in (0..8).rev() {
+                            let lsb = (first_byte & (1 << i)) >> i;
+                            let msb = (second_byte & (1 << i)) >> i;
+
+                            if msb << 1 | lsb != 0 {
+                                current_line[(sprite.x_pos + (7 - i)) as usize] =
+                                    convert_to_color(msb << 1 | lsb, palette);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        current_line
     }
 
     fn get_tile_row(
@@ -251,8 +291,8 @@ impl PPU {
         unsigned_addressing: bool,
         index: usize,
         y: u8,
-    ) -> [u8; 8] {
-        let mut current_line: [u8; 8] = [0; 8];
+    ) -> [Color32; 8] {
+        let mut current_line: [Color32; 8] = [LCD_WHITE; 8];
 
         let line_index = (memory[index] as usize) * 16;
         let ly_bytes = (y % 8) as usize;
@@ -265,7 +305,7 @@ impl PPU {
                 let lsb = (first_byte & (1 << i)) >> i;
                 let msb = (second_byte & (1 << i)) >> i;
 
-                current_line[7 - i] = msb << 1 | lsb;
+                current_line[7 - i] = convert_to_color(msb << 1 | lsb, Palette::BGP(self.regs.bgp));
             }
         } else {
             let first_byte = if memory[index] <= 127 {
@@ -286,7 +326,7 @@ impl PPU {
                 let lsb = (first_byte & (1 << i)) >> i;
                 let msb = (second_byte & (1 << i)) >> i;
 
-                current_line[7 - i] = msb << 1 | lsb;
+                current_line[7 - i] = convert_to_color(msb << 1 | lsb, Palette::BGP(self.regs.bgp));
             }
         }
 
@@ -297,16 +337,11 @@ impl PPU {
         let y = self.regs.ly as usize;
 
         for i in 0..LCD_WIDTH {
-            self.frame_buffer[y * LCD_WIDTH + i] = match self.current_line[i] {
-                0b00 => bgp_color_from_value(self.regs.bgp & 0b11),
-                0b01 => bgp_color_from_value((self.regs.bgp & 0b1100) >> 2),
-                0b10 => bgp_color_from_value((self.regs.bgp & 0b110000) >> 4),
-                0b11 => bgp_color_from_value((self.regs.bgp & 0b11000000) >> 6),
-                _ => unreachable!(),
-            }
+            self.frame_buffer[y * LCD_WIDTH + i] = self.current_line[i];
         }
 
         self.current_line.clear();
+        self.current_sprites.clear();
     }
 
     // TODO: interrupt handler parameter

@@ -37,8 +37,11 @@ impl Bus {
 
         self.timer.tick(cycles_passed);
         for _ in 0..4 {
-            self.ppu
-                .tick(cycles_passed, &mut self.memory, &mut self.interrupt_handler);
+            self.ppu.tick(
+                cycles_passed as i16,
+                &mut self.memory,
+                &mut self.interrupt_handler,
+            );
         }
 
         self.memory[0xFF04] = (self.timer.div >> 8) as u8;
@@ -87,7 +90,7 @@ impl Bus {
                 self.memory[address as usize] = byte;
             }
             0xE000..=0xFDFF => {} // println!("Echo RAM, ignore write"),
-            0xFE00..=0xFE9F => {} // println!("OAM write, ignore"),
+            0xFE00..=0xFE9F => self.memory[address as usize] = byte,
             0xFEA0..=0xFEFF => {} // println!("Not usable, usage of this area is prohibited"),
             0xFF00..=0xFF7F => {
                 match address {

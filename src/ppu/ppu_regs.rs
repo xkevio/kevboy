@@ -27,11 +27,19 @@ impl PPURegisters {
         self.lcdc & 0x1 != 0
     }
 
+    pub fn is_obj_enabled(&self) -> bool {
+        self.lcdc & 0x2 != 0
+    }
+
     pub fn is_window_enabled(&self) -> bool {
         self.lcdc & 0x20 != 0
     }
 
     pub fn is_window_visible(&self) -> bool {
         (0..=166).contains(&self.wx) && (0..=143).contains(&self.wy)
+    }
+
+    pub fn is_sprite_8x8(&self) -> bool {
+        self.lcdc & 0x4 == 0
     }
 }
