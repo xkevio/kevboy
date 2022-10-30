@@ -258,23 +258,36 @@ impl PPU {
                 let ly_bytes = (self.regs.ly % 8) as usize;
 
                 let palette = if sprite.get_obp_num() == 0 {
-                    Palette::OBP0(self.regs.opb0)
+                    Palette::OBP(self.regs.opb0)
                 } else {
-                    Palette::OBP1(self.regs.opb1)
+                    Palette::OBP(self.regs.opb1)
                 };
 
-                if sprite.is_obj_prio() {
-                    if !sprite.is_x_flipped() && !sprite.is_y_flipped() {
-                        let first_byte = memory[sprite_tile + (2 * ly_bytes)];
-                        let second_byte = memory[sprite_tile + (2 * ly_bytes + 1)];
+                let first_byte = if !sprite.is_y_flipped() {
+                    memory[sprite_tile + (2 * ly_bytes)]
+                } else {
+                    memory[sprite_tile + (2 * (7 - ly_bytes))]
+                };
 
-                        for i in (0..8).rev() {
-                            let lsb = (first_byte & (1 << i)) >> i;
-                            let msb = (second_byte & (1 << i)) >> i;
+                let second_byte = if !sprite.is_y_flipped() {
+                    memory[sprite_tile + (2 * ly_bytes + 1)]
+                } else {
+                    memory[sprite_tile + (2 * (7 - ly_bytes) + 1)]
+                };
 
-                            if msb << 1 | lsb != 0 {
-                                current_line[(sprite.x_pos + (7 - i)) as usize] =
-                                    convert_to_color(msb << 1 | lsb, palette);
+                for i in (0..8).rev() {
+                    let lsb = (first_byte & (1 << i)) >> i;
+                    let msb = (second_byte & (1 << i)) >> i;
+
+                    let x_flip = if sprite.is_x_flipped() { i } else { 7 - i };
+
+                    if msb << 1 | lsb != 0 {
+                        if sprite.is_obj_prio() {
+                            current_line[(sprite.x_pos + x_flip) as usize] =
+                                convert_to_color(msb << 1 | lsb, palette);
+                        } else {
+                            if current_line[(sprite.x_pos + x_flip) as usize] == LCD_WHITE {
+                                current_line[(sprite.x_pos + x_flip) as usize] = convert_to_color(msb << 1 | lsb, palette);
                             }
                         }
                     }
