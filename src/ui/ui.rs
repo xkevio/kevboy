@@ -5,7 +5,7 @@ use std::{
 
 use eframe::{
     egui::{
-        menu, CentralPanel, CollapsingHeader, RichText, TextEdit, TextStyle, TopBottomPanel, Window,
+        menu, CentralPanel, CollapsingHeader, RichText, TextEdit, TextStyle, TopBottomPanel, Window, Context,
     },
     epaint::{Color32, ColorImage},
     App,
@@ -176,15 +176,16 @@ impl App for Kevboy {
         // ----------------------------------
 
         if !self.emulator.rom.is_empty() {
-            self.run();
+            self.run(ctx);
             ctx.request_repaint();
         }
     }
 }
 
 impl Kevboy {
-    fn run(&mut self) {
+    fn run(&mut self, ctx: &Context) {
         while self.emulator.cycle_count < 17_476 {
+            self.emulator.bus.joypad.tick(ctx, &mut self.emulator.bus.interrupt_handler);
             self.emulator.cycle_count += self.emulator.step() as u16;
         }
 
@@ -205,5 +206,6 @@ impl Kevboy {
         }
 
         self.emulator.cycle_count = 0;
+        self.emulator.bus.joypad.reset_pressed_keys();
     }
 }

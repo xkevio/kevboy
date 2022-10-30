@@ -4,6 +4,7 @@ use ui::ui::Kevboy;
 
 mod cpu;
 mod emulator;
+mod input;
 mod mmu;
 mod ppu;
 mod ui;

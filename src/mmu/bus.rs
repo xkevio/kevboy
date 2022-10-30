@@ -1,23 +1,30 @@
 use crate::{
     cpu::{cpu::CPU, interrupts::InterruptHandler},
     mmu::{mmio::MMIO, timer::Timers},
-    ppu::ppu::PPU,
+    ppu::ppu::PPU, input::joypad::Joypad,
 };
 
 pub struct Bus {
-    pub memory: [u8; 0x10000], // one memory array not ideal
+    // one memory array not ideal
+    pub memory: [u8; 0x10000],
+
     pub timer: Timers,
     pub ppu: PPU,
+
     pub interrupt_handler: InterruptHandler,
+    pub joypad: Joypad,
 }
 
 impl Bus {
     pub fn new() -> Self {
         Self {
             memory: [0xFF; 0x10000],
+
             timer: Timers::new(),
             ppu: PPU::new(),
+
             interrupt_handler: InterruptHandler::default(),
+            joypad: Joypad::default(),
         }
     }
 
@@ -66,8 +73,9 @@ impl Bus {
         self.tick(1);
 
         match address {
-            0xFF40..=0xFF4B => self.ppu.read(address),
+            0xFF00 => self.joypad.read(0xFF00), // TODO address
             0xFF0F => self.interrupt_handler.intf,
+            0xFF40..=0xFF4B => self.ppu.read(address),
             0xFFFF => self.interrupt_handler.inte,
             _ => self.memory[address as usize],
         }
@@ -94,12 +102,8 @@ impl Bus {
             0xFEA0..=0xFEFF => {} // println!("Not usable, usage of this area is prohibited"),
             0xFF00..=0xFF7F => {
                 match address {
-                    0xFF00 => {
-                        self.memory[address as usize] = (self.memory[address as usize] & 0xC0)
-                            | byte
-                            | (self.memory[address as usize] & 0xF)
-                    }
-                    0xFF01 => eprint!("{}", byte as char), // SB output for blargg tests
+                    0xFF00 => self.joypad.write(0, byte),
+                    // 0xFF01 => // eprint!("{}", byte as char), // SB output for blargg tests
                     0xFF04 => {
                         // DIV register: any write resets it to 0
                         self.memory[address as usize] = 0;
@@ -186,7 +190,8 @@ impl Bus {
     ///
     /// Only needed if no boot rom is used.
     fn initialize_internal_registers(&mut self) {
-        self.memory[0xFF00] = 0xCF; // P1 / JOYP
+        self.joypad.write(0, 0xCF); // P1 / JOYP
+
         self.memory[0xFF07] = 0xF8; // TAC
         self.memory[0xFF4D] = 0xFF; // KEY1
         self.memory[0xFF50] = 0x01; // Disable BOOT ROM
