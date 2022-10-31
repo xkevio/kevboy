@@ -5,7 +5,8 @@ use std::{
 
 use eframe::{
     egui::{
-        menu, CentralPanel, CollapsingHeader, RichText, TextEdit, TextStyle, TopBottomPanel, Window, Context,
+        menu, CentralPanel, CollapsingHeader, Context, RichText, TextEdit, TextStyle,
+        TopBottomPanel, Window,
     },
     epaint::{Color32, ColorImage},
     App,
@@ -185,7 +186,10 @@ impl App for Kevboy {
 impl Kevboy {
     fn run(&mut self, ctx: &Context) {
         while self.emulator.cycle_count < 17_476 {
-            self.emulator.bus.joypad.tick(ctx, &mut self.emulator.bus.interrupt_handler);
+            self.emulator
+                .bus
+                .joypad
+                .tick(ctx, &mut self.emulator.bus.interrupt_handler);
             self.emulator.cycle_count += self.emulator.step() as u16;
         }
 

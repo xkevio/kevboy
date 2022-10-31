@@ -2,7 +2,7 @@ use eframe::epaint::Color32;
 
 use crate::{
     cpu::interrupts::{Interrupt, InterruptHandler},
-    mmu::mmio::MMIO,
+    mmu::{mmio::MMIO},
     ppu::{color_palette::*, ppu_regs::PPURegisters, sprite, sprite::Sprite},
     LCD_HEIGHT, LCD_WIDTH,
 };
@@ -26,6 +26,7 @@ pub struct PPU {
 
     current_mode: Mode,
     stat_block: bool,
+    dma_pending: bool,
 
     internal_window_line: u8,
     current_sprites: Vec<Sprite>,
@@ -64,7 +65,10 @@ impl MMIO for PPU {
             0xFF43 => self.regs.scx = value,
             0xFF44 => self.regs.ly = value,
             0xFF45 => self.regs.lyc = value,
-            0xFF46 => self.regs.dma = value,
+            0xFF46 => {
+                self.regs.dma = value;
+                self.dma_pending = true;
+            }
             0xFF47 => self.regs.bgp = value,
             0xFF48 => self.regs.opb0 = value,
             0xFF49 => self.regs.opb1 = value,
@@ -86,6 +90,7 @@ impl PPU {
 
             current_mode: Mode::HBlank,
             stat_block: false,
+            dma_pending: false,
 
             internal_window_line: 0,
             current_sprites: Vec::new(),
@@ -130,6 +135,22 @@ impl PPU {
             self.cycles_passed += cycles_passed;
         }
     }
+
+    // --------------------------
+    //          DMA
+    // --------------------------
+
+    pub fn is_dma_pending(&self) -> bool {
+        self.dma_pending
+    }
+
+    pub fn reset_dma(&mut self) {
+        self.dma_pending = false
+    }
+
+    // --------------------------
+    //          DMA
+    // --------------------------
 
     fn turn_lcd_off(&mut self) {
         self.regs.ly = 0;
@@ -254,7 +275,28 @@ impl PPU {
 
         if self.regs.is_obj_enabled() {
             for sprite in &self.current_sprites {
-                let sprite_tile = 0x8000 + (sprite.tile_index as usize) * 16;
+                let upper_tile = sprite.tile_index & 0xFE;
+                let lower_tile = sprite.tile_index | 0x1;
+
+                let current_tile = if self.regs.is_sprite_8x8() {
+                    sprite.tile_index
+                } else {
+                    if sprite.is_y_flipped() {
+                        if (self.regs.ly + sprite.y_pos) % 16 >= 8 {
+                            upper_tile
+                        } else {
+                            lower_tile
+                        }
+                    } else {
+                        if (self.regs.ly + sprite.y_pos) % 16 >= 8 {
+                            lower_tile
+                        } else {
+                            upper_tile
+                        }
+                    }
+                };
+
+                let sprite_tile = 0x8000 + (current_tile as usize) * 16;
                 let ly_bytes = (self.regs.ly % 8) as usize;
 
                 let palette = if sprite.get_obp_num() == 0 {
@@ -287,7 +329,8 @@ impl PPU {
                                 convert_to_color(msb << 1 | lsb, palette);
                         } else {
                             if current_line[(sprite.x_pos + x_flip) as usize] == LCD_WHITE {
-                                current_line[(sprite.x_pos + x_flip) as usize] = convert_to_color(msb << 1 | lsb, palette);
+                                current_line[(sprite.x_pos + x_flip) as usize] =
+                                    convert_to_color(msb << 1 | lsb, palette);
                             }
                         }
                     }

@@ -1,7 +1,8 @@
 use crate::{
     cpu::{cpu::CPU, interrupts::InterruptHandler},
+    input::joypad::Joypad,
     mmu::{mmio::MMIO, timer::Timers},
-    ppu::ppu::PPU, input::joypad::Joypad,
+    ppu::ppu::PPU,
 };
 
 pub struct Bus {
@@ -49,6 +50,11 @@ impl Bus {
                 &mut self.memory,
                 &mut self.interrupt_handler,
             );
+        }
+
+        // maybe delay?
+        if self.ppu.is_dma_pending() {
+            self.dma_transfer();
         }
 
         self.memory[0xFF04] = (self.timer.div >> 8) as u8;
@@ -185,6 +191,17 @@ impl Bus {
         }
     }
 
+    fn dma_transfer(&mut self) {
+        let source_start = (self.ppu.read(0xFF46) as u16) * 0x100;
+        let source_end = source_start + 0x9F;
+
+        self.ppu.reset_dma();
+
+        for (dest_ind, addr) in (source_start..=source_end).enumerate() {
+            self.write_byte(0xFE00 + (dest_ind as u16), self.memory[addr as usize]);
+        }
+    }
+
     /// Initializes some internal memory-mapped registers
     /// to their values after booting on the DMG model.
     ///
@@ -200,7 +217,10 @@ impl Bus {
 
         self.ppu.write(0xFF40, 0x91); // LCDC
         self.ppu.write(0xFF41, 0x81); // STAT
+
         self.ppu.write(0xFF46, 0xFF); // DMA
+        self.ppu.reset_dma();
+
         self.ppu.write(0xFF47, 0xFC); // BGP
     }
 }

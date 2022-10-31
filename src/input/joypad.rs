@@ -1,6 +1,9 @@
 use eframe::egui::{Context, Key};
 
-use crate::{mmu::mmio::MMIO, cpu::interrupts::{InterruptHandler, Interrupt}};
+use crate::{
+    cpu::interrupts::{Interrupt, InterruptHandler},
+    mmu::mmio::MMIO,
+};
 
 #[derive(Default)]
 pub struct Joypad {
@@ -24,7 +27,7 @@ impl MMIO for Joypad {
 }
 
 impl Joypad {
-    pub fn tick(&mut self, ctx: &Context, interrupt_handler: &mut InterruptHandler) {
+    pub fn tick(&mut self, ctx: &Context, _interrupt_handler: &mut InterruptHandler) {
         self.reset_pressed_keys();
         if self.get_button_type() == Some(ButtonType::Action) {
             // A

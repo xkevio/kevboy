@@ -6,8 +6,9 @@ pub(super) const LCD_GRAY: Color32 = Color32::from_rgb(54, 93, 72);
 pub(super) const LCD_BLACK: Color32 = Color32::from_rgb(42, 69, 59);
 
 /// Palette enum with the according palette register as the associated value.
-/// 
+///
 /// `OBP` shall be used for both obp0 and obp1 as long as the correct palette is passed.
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Copy)]
 pub enum Palette {
     BGP(u8),
