@@ -33,7 +33,7 @@ impl Joypad {
             // A
             if ctx.input().key_down(Key::O) {
                 if self.joyp & 0x1 != 0 {
-                    println!("A was pressed!");
+                    // println!("A was pressed!");
                     // interrupt_handler.request_interrupt(Interrupt::Joypad);
                 }
 
@@ -43,7 +43,7 @@ impl Joypad {
             // B
             if ctx.input().key_down(Key::P) {
                 if self.joyp & 0x2 != 0 {
-                    println!("B was pressed!");
+                    // println!("B was pressed!");
                     // interrupt_handler.request_interrupt(Interrupt::Joypad);
                 }
 
@@ -53,7 +53,7 @@ impl Joypad {
             // Select
             if ctx.input().key_down(Key::Q) {
                 if self.joyp & 0x4 != 0 {
-                    println!("Select was pressed!");
+                    // println!("Select was pressed!");
                     // interrupt_handler.request_interrupt(Interrupt::Joypad);
                 }
 
@@ -63,7 +63,7 @@ impl Joypad {
             // Start
             if ctx.input().key_down(Key::Enter) {
                 if self.joyp & 0x8 != 0 {
-                    println!("Start was pressed!");
+                    // println!("Start was pressed!");
                     // interrupt_handler.request_interrupt(Interrupt::Joypad);
                 }
 
@@ -75,7 +75,7 @@ impl Joypad {
             // Right
             if ctx.input().key_down(Key::D) {
                 if self.joyp & 0x1 != 0 {
-                    println!("Right was pressed!");
+                    // println!("Right was pressed!");
                     // interrupt_handler.request_interrupt(Interrupt::Joypad);
                 }
 
@@ -85,7 +85,7 @@ impl Joypad {
             // B
             if ctx.input().key_down(Key::A) {
                 if self.joyp & 0x2 != 0 {
-                    println!("Left was pressed!");
+                    // println!("Left was pressed!");
                     // interrupt_handler.request_interrupt(Interrupt::Joypad);
                 }
 
@@ -95,7 +95,7 @@ impl Joypad {
             // Select
             if ctx.input().key_down(Key::W) {
                 if self.joyp & 0x4 != 0 {
-                    println!("Up was pressed!");
+                    // println!("Up was pressed!");
                     // interrupt_handler.request_interrupt(Interrupt::Joypad);
                 }
 
@@ -105,7 +105,7 @@ impl Joypad {
             // Down
             if ctx.input().key_down(Key::S) {
                 if self.joyp & 0x8 != 0 {
-                    println!("Down was pressed!");
+                    // println!("Down was pressed!");
                     // interrupt_handler.request_interrupt(Interrupt::Joypad);
                 }
 

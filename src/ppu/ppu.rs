@@ -297,7 +297,7 @@ impl PPU {
                 };
 
                 let sprite_tile = 0x8000 + (current_tile as usize) * 16;
-                let ly_bytes = (self.regs.ly % 8) as usize;
+                let ly_bytes = ((self.regs.ly - sprite.y_pos) % 8) as usize;
 
                 let palette = if sprite.get_obp_num() == 0 {
                     Palette::OBP(self.regs.opb0)
