@@ -2,12 +2,12 @@ use eframe::epaint::Color32;
 
 use crate::{
     cpu::interrupts::{Interrupt, InterruptHandler},
-    mmu::{mmio::MMIO},
+    mmu::mmio::MMIO,
     ppu::{color_palette::*, ppu_regs::PPURegisters, sprite, sprite::Sprite},
     LCD_HEIGHT, LCD_WIDTH,
 };
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 enum Mode {
     Mode2 = 0b10,
     Mode3 = 0b11,
@@ -100,12 +100,7 @@ impl PPU {
     // should tick 4 times per m-cycle
     // 456 clocks per scanline
     // 80 (Mode2) - 172 (Mode3) - 204 (HBlank) - VBlank
-    pub fn tick(
-        &mut self,
-        cycles_passed: i16,
-        memory: &mut [u8],
-        interrupt_handler: &mut InterruptHandler,
-    ) {
+    pub fn tick(&mut self, memory: &mut [u8], interrupt_handler: &mut InterruptHandler) {
         if self.regs.is_lcd_on() {
             if self.regs.ly_lyc() {
                 self.regs.stat |= 0b100;
@@ -132,7 +127,7 @@ impl PPU {
                 }
             }
 
-            self.cycles_passed += cycles_passed;
+            self.cycles_passed += 1;
         }
     }
 

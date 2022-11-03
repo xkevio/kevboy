@@ -44,12 +44,10 @@ impl Bus {
         }
 
         self.timer.tick(cycles_passed);
-        for _ in 0..4 {
-            self.ppu.tick(
-                cycles_passed as i16,
-                &mut self.memory,
-                &mut self.interrupt_handler,
-            );
+
+        // PPU ticks 4 times per M-cycle
+        for _ in 0..(cycles_passed * 4) {
+            self.ppu.tick(&mut self.memory, &mut self.interrupt_handler);
         }
 
         // maybe delay?

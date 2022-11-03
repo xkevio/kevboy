@@ -39,7 +39,7 @@ impl Sprite {
     }
 
     /// Checks if `x_pos` of `other` is between the sprite
-    /// 
+    ///
     /// Only checks for overlap on the "right" side (for now)
     pub fn has_overlap(&self, other: &Sprite) -> bool {
         (self.x_pos..self.x_pos + 8).contains(&other.x_pos)
