@@ -185,6 +185,8 @@ impl App for Kevboy {
 
 impl Kevboy {
     fn run(&mut self, ctx: &Context) {
+        let start = Instant::now();
+
         while self.emulator.cycle_count < 17_476 {
             self.emulator
                 .bus
@@ -204,7 +206,6 @@ impl Kevboy {
 
         self.frame_buffer = buf;
 
-        let start = Instant::now();
         while start.elapsed() < Duration::from_micros(16667) {
             // do nothing
         }
