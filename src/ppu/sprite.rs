@@ -1,4 +1,4 @@
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Sprite {
     pub y_pos: u8,
     pub x_pos: u8,
@@ -14,6 +14,8 @@ pub fn get_current_sprites_per_line(ly: u8, height_mode: bool, oam: &[u8]) -> Ve
     for attributes in oam.chunks(4) {
         let y = attributes[0] - 16;
         let sprite_height = if height_mode { 8 } else { 16 };
+
+        // TODO: y-check
 
         if (y..y + sprite_height).contains(&ly) && sprites.len() < 10 {
             let x = attributes[1] - 8;

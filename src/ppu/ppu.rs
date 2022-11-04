@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use eframe::epaint::Color32;
 
 use crate::{
@@ -9,10 +11,10 @@ use crate::{
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 enum Mode {
+    HBlank = 0,
+    VBlank = 0b1,
     Mode2 = 0b10,
     Mode3 = 0b11,
-    VBlank = 0b1,
-    HBlank = 0,
 }
 
 #[allow(clippy::upper_case_acronyms)]
@@ -264,12 +266,27 @@ impl PPU {
             }
         }
 
+        // Fill current_line when empty aka when bg / window were disabled
         if current_line.is_empty() {
             current_line = vec![LCD_WHITE; LCD_WIDTH];
         }
 
+        // ----------------------------
+        //      Sprites
+        // ----------------------------
+
         if self.regs.is_obj_enabled() {
-            for sprite in &self.current_sprites {
+            let mut overlapping_pixels: Option<Range<u8>> = None;
+            let mut prev_transparent_pixels: Vec<u8> = Vec::new();
+
+            for (index, sprite) in self.current_sprites.iter().enumerate() {
+                if index > 0 {
+                    if self.current_sprites[index - 1].has_overlap(sprite) {
+                        overlapping_pixels =
+                            Some(sprite.x_pos..self.current_sprites[index - 1].x_pos + 8);
+                    }
+                }
+
                 let upper_tile = sprite.tile_index & 0xFE;
                 let lower_tile = sprite.tile_index | 0x1;
 
@@ -317,19 +334,40 @@ impl PPU {
                     let msb = (second_byte & (1 << i)) >> i;
 
                     let x_flip = if sprite.is_x_flipped() { i } else { 7 - i };
+                    let x = (sprite.x_pos + x_flip) as usize;
 
                     if msb << 1 | lsb != 0 {
-                        if sprite.is_obj_prio() {
-                            current_line[(sprite.x_pos + x_flip) as usize] =
-                                convert_to_color(msb << 1 | lsb, palette);
+                        let color = if sprite.is_obj_prio() {
+                            convert_to_color(msb << 1 | lsb, palette)
                         } else {
-                            if current_line[(sprite.x_pos + x_flip) as usize] == LCD_WHITE {
-                                current_line[(sprite.x_pos + x_flip) as usize] =
-                                    convert_to_color(msb << 1 | lsb, palette);
+                            if current_line[x] == convert_to_color(0, Palette::BGP(self.regs.bgp)) {
+                                convert_to_color(msb << 1 | lsb, palette)
+                            } else {
+                                current_line[x]
                             }
+                        };
+
+                        match overlapping_pixels.clone() {
+                            Some(ov_pixels) => {
+                                if ov_pixels.contains(&(x as u8)) {
+                                    // transparent, so draw
+                                    println!("ly: {}, {:?}, {x}", self.regs.ly, prev_transparent_pixels);
+                                    if prev_transparent_pixels.contains(&(x as u8)) {
+                                        current_line[x] = color;
+                                    }
+                                } else {
+                                    current_line[x] = color;
+                                }
+                            }
+                            None => current_line[x] = color,
                         }
+                    } else {
+                        prev_transparent_pixels.push(sprite.x_pos + x_flip);
                     }
                 }
+
+                overlapping_pixels = None;
+                prev_transparent_pixels.clear();
             }
         }
 
