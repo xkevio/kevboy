@@ -1,5 +1,3 @@
-use std::ops::Range;
-
 use eframe::epaint::Color32;
 
 use crate::{
@@ -276,17 +274,7 @@ impl PPU {
         // ----------------------------
 
         if self.regs.is_obj_enabled() {
-            let mut overlapping_pixels: Option<Range<u8>> = None;
-            let mut prev_transparent_pixels: Vec<u8> = Vec::new();
-
-            for (index, sprite) in self.current_sprites.iter().enumerate() {
-                if index > 0 {
-                    if self.current_sprites[index - 1].has_overlap(sprite) {
-                        overlapping_pixels =
-                            Some(sprite.x_pos..self.current_sprites[index - 1].x_pos + 8);
-                    }
-                }
-
+            for sprite in self.current_sprites.iter().rev() {
                 let upper_tile = sprite.tile_index & 0xFE;
                 let lower_tile = sprite.tile_index | 0x1;
 
@@ -347,27 +335,9 @@ impl PPU {
                             }
                         };
 
-                        match overlapping_pixels.clone() {
-                            Some(ov_pixels) => {
-                                if ov_pixels.contains(&(x as u8)) {
-                                    // transparent, so draw
-                                    println!("ly: {}, {:?}, {x}", self.regs.ly, prev_transparent_pixels);
-                                    if prev_transparent_pixels.contains(&(x as u8)) {
-                                        current_line[x] = color;
-                                    }
-                                } else {
-                                    current_line[x] = color;
-                                }
-                            }
-                            None => current_line[x] = color,
-                        }
-                    } else {
-                        prev_transparent_pixels.push(sprite.x_pos + x_flip);
+                        current_line[x] = color;
                     }
                 }
-
-                overlapping_pixels = None;
-                prev_transparent_pixels.clear();
             }
         }
 
