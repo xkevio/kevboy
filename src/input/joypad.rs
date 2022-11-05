@@ -27,95 +27,71 @@ impl MMIO for Joypad {
 }
 
 impl Joypad {
-    pub fn tick(&mut self, ctx: &Context, _interrupt_handler: &mut InterruptHandler) {
+    pub fn tick(&mut self, ctx: &Context, interrupt_handler: &mut InterruptHandler) {
         self.reset_pressed_keys();
-        if self.get_button_type() == Some(ButtonType::Action) {
-            // A
-            if ctx.input().key_down(Key::O) {
-                if self.joyp & 0x1 != 0 {
-                    // println!("A was pressed!");
-                    // interrupt_handler.request_interrupt(Interrupt::Joypad);
-                }
 
-                self.joyp &= !(0x1);
+        match self.get_button_type() {
+            Some(ButtonType::Action) => {
+                self.handle_key_input(ctx, interrupt_handler, Key::P, Key::O, Key::Q, Key::Enter)
             }
-
-            // B
-            if ctx.input().key_down(Key::P) {
-                if self.joyp & 0x2 != 0 {
-                    // println!("B was pressed!");
-                    // interrupt_handler.request_interrupt(Interrupt::Joypad);
-                }
-
-                self.joyp &= !(0x2);
+            Some(ButtonType::Direction) => {
+                self.handle_key_input(ctx, interrupt_handler, Key::D, Key::A, Key::W, Key::S)
             }
-
-            // Select
-            if ctx.input().key_down(Key::Q) {
-                if self.joyp & 0x4 != 0 {
-                    // println!("Select was pressed!");
-                    // interrupt_handler.request_interrupt(Interrupt::Joypad);
-                }
-
-                self.joyp &= !(0x4);
-            }
-
-            // Start
-            if ctx.input().key_down(Key::Enter) {
-                if self.joyp & 0x8 != 0 {
-                    // println!("Start was pressed!");
-                    // interrupt_handler.request_interrupt(Interrupt::Joypad);
-                }
-
-                self.joyp &= !(0x8);
-            }
-        }
-
-        if self.get_button_type() == Some(ButtonType::Direction) {
-            // Right
-            if ctx.input().key_down(Key::D) {
-                if self.joyp & 0x1 != 0 {
-                    // println!("Right was pressed!");
-                    // interrupt_handler.request_interrupt(Interrupt::Joypad);
-                }
-
-                self.joyp &= !(0x1);
-            }
-
-            // B
-            if ctx.input().key_down(Key::A) {
-                if self.joyp & 0x2 != 0 {
-                    // println!("Left was pressed!");
-                    // interrupt_handler.request_interrupt(Interrupt::Joypad);
-                }
-
-                self.joyp &= !(0x2);
-            }
-
-            // Select
-            if ctx.input().key_down(Key::W) {
-                if self.joyp & 0x4 != 0 {
-                    // println!("Up was pressed!");
-                    // interrupt_handler.request_interrupt(Interrupt::Joypad);
-                }
-
-                self.joyp &= !(0x4);
-            }
-
-            // Down
-            if ctx.input().key_down(Key::S) {
-                if self.joyp & 0x8 != 0 {
-                    // println!("Down was pressed!");
-                    // interrupt_handler.request_interrupt(Interrupt::Joypad);
-                }
-
-                self.joyp &= !(0x8);
-            }
+            None => {}
         }
     }
 
     pub fn reset_pressed_keys(&mut self) {
         self.joyp |= 0xF;
+    }
+
+    /// `key1`: A or Right
+    ///
+    /// `key2`: B or Left
+    ///
+    /// `key3`: Shift or Up
+    ///
+    /// `key4`: Start or Down
+    fn handle_key_input(
+        &mut self,
+        ctx: &Context,
+        interrupt_handler: &mut InterruptHandler,
+        key1: Key,
+        key2: Key,
+        key3: Key,
+        key4: Key,
+    ) {
+        if ctx.input().key_down(key1) {
+            if self.joyp & 0x1 != 0 {
+                interrupt_handler.request_interrupt(Interrupt::Joypad);
+            }
+
+            self.joyp &= !(0x1);
+        }
+
+        if ctx.input().key_down(key2) {
+            if self.joyp & 0x2 != 0 {
+                interrupt_handler.request_interrupt(Interrupt::Joypad);
+            }
+
+            self.joyp &= !(0x2);
+        }
+
+        if ctx.input().key_down(key3) {
+            if self.joyp & 0x4 != 0 {
+                interrupt_handler.request_interrupt(Interrupt::Joypad);
+            }
+
+            self.joyp &= !(0x4);
+        }
+
+        if ctx.input().key_down(key4) {
+            if self.joyp & 0x8 != 0 {
+                interrupt_handler.request_interrupt(Interrupt::Joypad);
+            }
+
+            self.joyp &= !(0x8);
+        }
     }
 
     fn get_button_type(&self) -> Option<ButtonType> {
