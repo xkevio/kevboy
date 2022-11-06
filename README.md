@@ -1,3 +1,13 @@
+# WIP Gameboy (DMG) Emulator
+
+Only **MBC0** currently, MBCs are next on the TODO list.
+
+### Passed tests:
+
+dmg-acid2: Passed
+
+sprite_priority: Passed
+
 01-special: Passed
 
 02-interrupts: Passed
