@@ -10,10 +10,9 @@ pub struct Bus {
     pub rom_bank_x: [u8; 0x4000],
 
     pub vram: [u8; 0x2000],
-    pub external_ram: [u8; 0x1000],
+    pub external_ram: [u8; 0x2000],
     pub wram: [u8; 0x2000],
 
-    pub echo_ram: [u8; 0x1E00], // mirror of C000-DDFF
     pub oam: [u8; 0xA0],
 
     pub joypad: Joypad,
@@ -40,8 +39,7 @@ impl MMIO for Bus {
             0x4000..=0x7FFF => self.rom_bank_x[address as usize - 0x4000],
             0x8000..=0x9FFF => self.vram[address as usize - 0x8000],
             0xA000..=0xBFFF => self.external_ram[address as usize - 0xA000],
-            0xC000..=0xDFFF => self.wram[address as usize - 0xC000],
-            0xE000..=0xFDFF => self.echo_ram[address as usize - 0xE000],
+            0xC000..=0xFDFF => self.wram[address as usize & 0x1FFF],
             0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00],
             0xFEA0..=0xFEFF => 0xFF, // usage of this area not prohibited, may trigger oam corruption
             0xFF00..=0xFF7F => {
@@ -67,18 +65,11 @@ impl MMIO for Bus {
         self.tick(1);
 
         match address {
-            0x0000..=0x3FFF => self.rom_bank_0[address as usize] = value,
-            0x4000..=0x7FFF => self.rom_bank_x[address as usize - 0x4000] = value,
+            0x0000..=0x3FFF => {}, // don't write to ROM
+            0x4000..=0x7FFF => {}, // don't write to ROM
             0x8000..=0x9FFF => self.vram[address as usize - 0x8000] = value,
             0xA000..=0xBFFF => self.external_ram[address as usize - 0xA000] = value,
-            0xC000..=0xDFFF => {
-                self.wram[address as usize - 0xC000] = value;
-
-                // mirror wram partially into echo ram
-                if address <= 0xDDFF {
-                    self.echo_ram[address as usize - 0xC000] = value;
-                }
-            }
+            0xC000..=0xFDFF => self.wram[address as usize & 0x1FFF] = value,
             0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00] = value,
             0xFEA0..=0xFEFF => {} // not usable area
             0xFF00..=0xFF7F => {
@@ -95,7 +86,7 @@ impl MMIO for Bus {
             }
             0xFF80..=0xFFFE => self.hram[address as usize - 0xFF80] = value,
             0xFFFF => self.interrupt_handler.inte = value,
-            _ => unreachable!("Write to invalid address: {:#06X}", address),
+            // _ => unreachable!("Write to invalid address: {:#06X}", address),
         }
     }
 }
@@ -111,10 +102,9 @@ impl Bus {
             rom_bank_x: [0; 0x4000],
 
             vram: [0; 0x2000],
-            external_ram: [0; 0x1000],
+            external_ram: [0; 0x2000],
             wram: [0; 0x2000],
 
-            echo_ram: [0; 0x1E00],
             oam: [0; 0xA0],
 
             joypad: Joypad::default(),
