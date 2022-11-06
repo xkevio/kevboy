@@ -1,6 +1,6 @@
 use crate::{
     cpu::registers::{Flag, Registers, Regs},
-    mmu::bus::Bus,
+    mmu::{bus::Bus, mmio::MMIO},
 };
 
 use std::ops::{Add, Sub};
@@ -14,7 +14,7 @@ macro_rules! reg8 {
             3 => $self.registers.E,
             4 => $self.registers.H,
             5 => $self.registers.L,
-            6 => $bus.read_byte($self.registers.get_hl()),
+            6 => $bus.read($self.registers.get_hl()),
             7 => $self.registers.A,
             _ => unreachable!("Invalid register!"),
         }
@@ -32,8 +32,8 @@ macro_rules! reg8 {
 //             4 => $self.registers.H = $func($self.registers.H),
 //             5 => $self.registers.L = $func($self.registers.L),
 //             6 => {
-//                 let hl_byte = $bus.read_byte($self.registers.get_hl());
-//                 $bus.write_byte($self.registers.get_hl(), $func(hl_byte));
+//                 let hl_byte = $bus.read($self.registers.get_hl());
+//                 $bus.write($self.registers.get_hl(), $func(hl_byte));
 //             }
 //             7 => $self.registers.A = $func($self.registers.A),
 //             _ => unreachable!("Invalid register!"),
@@ -88,8 +88,8 @@ impl CPU {
                 0x04 => { self.registers.H = self.rlc(self.registers.H); 2 }
                 0x05 => { self.registers.L = self.rlc(self.registers.L); 2 }
                 0x06 => {
-                    let hl_byte = bus.read_byte(self.registers.get_hl());
-                    bus.write_byte(
+                    let hl_byte = bus.read(self.registers.get_hl());
+                    bus.write(
                         self.registers.get_hl(),
                         self.rlc(hl_byte),
                     );
@@ -103,8 +103,8 @@ impl CPU {
                 0x0C => { self.registers.H = self.rrc(self.registers.H); 2 }
                 0x0D => { self.registers.L = self.rrc(self.registers.L); 2 }
                 0x0E => {
-                    let hl_byte = bus.read_byte(self.registers.get_hl());
-                    bus.write_byte(
+                    let hl_byte = bus.read(self.registers.get_hl());
+                    bus.write(
                         self.registers.get_hl(),
                         self.rrc(hl_byte),
                     );
@@ -118,8 +118,8 @@ impl CPU {
                 0x14 => { self.registers.H = self.rl(self.registers.H); 2 }
                 0x15 => { self.registers.L = self.rl(self.registers.L); 2 }
                 0x16 => {
-                    let hl_byte = bus.read_byte(self.registers.get_hl());
-                    bus.write_byte(
+                    let hl_byte = bus.read(self.registers.get_hl());
+                    bus.write(
                         self.registers.get_hl(),
                         self.rl(hl_byte),
                     );
@@ -133,8 +133,8 @@ impl CPU {
                 0x1C => { self.registers.H = self.rr(self.registers.H); 2 }
                 0x1D => { self.registers.L = self.rr(self.registers.L); 2 }
                 0x1E => {
-                    let hl_byte = bus.read_byte(self.registers.get_hl());
-                    bus.write_byte(
+                    let hl_byte = bus.read(self.registers.get_hl());
+                    bus.write(
                         self.registers.get_hl(),
                         self.rr(hl_byte),
                     );
@@ -148,8 +148,8 @@ impl CPU {
                 0x24 => { self.registers.H = self.sla(self.registers.H); 2 }
                 0x25 => { self.registers.L = self.sla(self.registers.L); 2 }
                 0x26 => {
-                    let hl_byte = bus.read_byte(self.registers.get_hl());
-                    bus.write_byte(
+                    let hl_byte = bus.read(self.registers.get_hl());
+                    bus.write(
                         self.registers.get_hl(),
                         self.sla(hl_byte),
                     );
@@ -163,8 +163,8 @@ impl CPU {
                 0x2C => { self.registers.H = self.sra(self.registers.H); 2 }
                 0x2D => { self.registers.L = self.sra(self.registers.L); 2 }
                 0x2E => {
-                    let hl_byte = bus.read_byte(self.registers.get_hl());
-                    bus.write_byte(
+                    let hl_byte = bus.read(self.registers.get_hl());
+                    bus.write(
                         self.registers.get_hl(),
                         self.sra(hl_byte),
                     );
@@ -178,8 +178,8 @@ impl CPU {
                 0x34 => { self.registers.H = self.swap(self.registers.H); 2 }
                 0x35 => { self.registers.L = self.swap(self.registers.L); 2 }
                 0x36 => {
-                    let hl_byte = bus.read_byte(self.registers.get_hl());
-                    bus.write_byte(
+                    let hl_byte = bus.read(self.registers.get_hl());
+                    bus.write(
                         self.registers.get_hl(),
                         self.swap(hl_byte),
                     );
@@ -193,8 +193,8 @@ impl CPU {
                 0x3C => { self.registers.H = self.srl(self.registers.H); 2 }
                 0x3D => { self.registers.L = self.srl(self.registers.L); 2 }
                 0x3E => {
-                    let hl_byte = bus.read_byte(self.registers.get_hl());
-                    bus.write_byte(
+                    let hl_byte = bus.read(self.registers.get_hl());
+                    bus.write(
                         self.registers.get_hl(),
                         self.srl(hl_byte),
                     );
@@ -226,8 +226,8 @@ impl CPU {
                         4 => { self.registers.H = self.res(bit, self.registers.H); 2 }
                         5 => { self.registers.L = self.res(bit, self.registers.L); 2 }
                         6 => {
-                            let hl_byte = bus.read_byte(self.registers.get_hl());
-                            bus.write_byte(
+                            let hl_byte = bus.read(self.registers.get_hl());
+                            bus.write(
                                 self.registers.get_hl(),
                                 self.res(bit, hl_byte)
                             );
@@ -249,8 +249,8 @@ impl CPU {
                         4 => { self.registers.H = self.set(bit, self.registers.H); 2 }
                         5 => { self.registers.L = self.set(bit, self.registers.L); 2 }
                         6 => {
-                            let hl_byte = bus.read_byte(self.registers.get_hl());
-                            bus.write_byte(
+                            let hl_byte = bus.read(self.registers.get_hl());
+                            bus.write(
                                 self.registers.get_hl(),
                                 self.set(bit, hl_byte)
                             );
@@ -325,8 +325,8 @@ impl CPU {
                         4 => { self.registers.H = self.inc8(self.registers.H); 1 }
                         5 => { self.registers.L = self.inc8(self.registers.L); 1 }
                         6 => {
-                            let hl_byte = bus.read_byte(self.registers.get_hl());
-                            bus.write_byte(
+                            let hl_byte = bus.read(self.registers.get_hl());
+                            bus.write(
                                 self.registers.get_hl(),
                                 self.inc8(hl_byte)
                             );
@@ -347,8 +347,8 @@ impl CPU {
                         4 => { self.registers.H = self.dec8(self.registers.H); 1 }
                         5 => { self.registers.L = self.dec8(self.registers.L); 1 }
                         6 => {
-                            let hl_byte = bus.read_byte(self.registers.get_hl());
-                            bus.write_byte(
+                            let hl_byte = bus.read(self.registers.get_hl());
+                            bus.write(
                                 self.registers.get_hl(),
                                 self.dec8(hl_byte)
                             );
@@ -394,14 +394,14 @@ impl CPU {
                     let reg = (opcode >> 4) & 0b11;
 
                     match reg {
-                        0 => { self.ld_a(bus.read_byte(self.registers.get_bc())) }
-                        1 => { self.ld_a(bus.read_byte(self.registers.get_de())) }
+                        0 => { self.ld_a(bus.read(self.registers.get_bc())) }
+                        1 => { self.ld_a(bus.read(self.registers.get_de())) }
                         2 => {
-                            self.ld_a(bus.read_byte(self.registers.get_hl()));
+                            self.ld_a(bus.read(self.registers.get_hl()));
                             self.inc16(Regs::HL);
                         }
                         3 => {
-                            self.ld_a(bus.read_byte(self.registers.get_hl()));
+                            self.ld_a(bus.read(self.registers.get_hl()));
                             self.dec16(Regs::HL);
                         }
                         _ => { panic!("Invalid register!") }
@@ -577,25 +577,25 @@ impl CPU {
                 0xD9 => { self.reti(bus); 4 }
                 0xE0 => {
                     let address = 0xFF00 + (self.fetch_operand(bus) as u16);
-                    bus.write_byte(address, self.registers.A);
+                    bus.write(address, self.registers.A);
 
                     3
                 }
                 0xF0 => {
                     let address = 0xFF00 + (self.fetch_operand(bus) as u16);
-                    self.registers.A = bus.read_byte(address);
+                    self.registers.A = bus.read(address);
 
                     3
                 }
                 0xE2 => {
                     let address = 0xFF00 + (self.registers.C as u16);
-                    bus.write_byte(address, self.registers.A);
+                    bus.write(address, self.registers.A);
 
                     2
                 }
                 0xF2 => {
                     let address = 0xFF00 + (self.registers.C as u16);
-                    self.registers.A = bus.read_byte(address);
+                    self.registers.A = bus.read(address);
 
                     2
                 }
@@ -613,7 +613,7 @@ impl CPU {
                 0xE9 => { self.jp_hl(); 1 }
                 0xEA => {
                     let address = bus.read_16(self.registers.PC);
-                    bus.write_byte(address, self.registers.A);
+                    bus.write(address, self.registers.A);
 
                     self.registers.PC += 2; // TODO
 
@@ -621,7 +621,7 @@ impl CPU {
                 }
                 0xFA => {
                     let address = bus.read_16(self.registers.PC);
-                    self.registers.A = bus.read_byte(address);
+                    self.registers.A = bus.read(address);
 
                     self.registers.PC += 2; // TODO
 
@@ -649,7 +649,7 @@ impl CPU {
 
     /// Read next operand at PC and increase PC after.
     fn fetch_operand(&mut self, bus: &mut Bus) -> u8 {
-        let operand = bus.read_byte(self.registers.PC);
+        let operand = bus.read(self.registers.PC);
         self.registers.PC += 1;
 
         operand
@@ -797,7 +797,7 @@ impl CPU {
             4 => self.registers.H = value,
             5 => self.registers.L = value,
             6 => {
-                bus.write_byte(self.registers.get_hl(), value);
+                bus.write(self.registers.get_hl(), value);
             }
             7 => self.registers.A = value,
             _ => {
@@ -811,7 +811,7 @@ impl CPU {
     }
 
     fn st_a(&mut self, bus: &mut Bus, value: u16) {
-        bus.write_byte(value, self.registers.A);
+        bus.write(value, self.registers.A);
     }
 
     // make prettier, dont have 3 half_carry functions
@@ -1244,24 +1244,24 @@ impl CPU {
     fn pop(&mut self, reg16: Regs, bus: &mut Bus) {
         match reg16 {
             Regs::BC => {
-                self.registers.C = bus.read_byte(self.registers.SP);
+                self.registers.C = bus.read(self.registers.SP);
                 self.registers.SP += 1;
-                self.registers.B = bus.read_byte(self.registers.SP);
+                self.registers.B = bus.read(self.registers.SP);
             }
             Regs::DE => {
-                self.registers.E = bus.read_byte(self.registers.SP);
+                self.registers.E = bus.read(self.registers.SP);
                 self.registers.SP += 1;
-                self.registers.D = bus.read_byte(self.registers.SP);
+                self.registers.D = bus.read(self.registers.SP);
             }
             Regs::HL => {
-                self.registers.L = bus.read_byte(self.registers.SP);
+                self.registers.L = bus.read(self.registers.SP);
                 self.registers.SP += 1;
-                self.registers.H = bus.read_byte(self.registers.SP);
+                self.registers.H = bus.read(self.registers.SP);
             }
             Regs::AF => {
-                self.registers.F = bus.read_byte(self.registers.SP);
+                self.registers.F = bus.read(self.registers.SP);
                 self.registers.SP += 1;
-                self.registers.A = bus.read_byte(self.registers.SP);
+                self.registers.A = bus.read(self.registers.SP);
 
                 // clear out lower nibble since it should always be zero
                 self.registers.F &= !(1 | 1 << 1 | 1 << 2 | 1 << 3);
@@ -1278,31 +1278,31 @@ impl CPU {
         match reg16 {
             Regs::BC => {
                 self.registers.SP -= 1;
-                bus.write_byte(self.registers.SP, self.registers.B);
+                bus.write(self.registers.SP, self.registers.B);
 
                 self.registers.SP -= 1;
-                bus.write_byte(self.registers.SP, self.registers.C);
+                bus.write(self.registers.SP, self.registers.C);
             }
             Regs::DE => {
                 self.registers.SP -= 1;
-                bus.write_byte(self.registers.SP, self.registers.D);
+                bus.write(self.registers.SP, self.registers.D);
 
                 self.registers.SP -= 1;
-                bus.write_byte(self.registers.SP, self.registers.E);
+                bus.write(self.registers.SP, self.registers.E);
             }
             Regs::HL => {
                 self.registers.SP -= 1;
-                bus.write_byte(self.registers.SP, self.registers.H);
+                bus.write(self.registers.SP, self.registers.H);
 
                 self.registers.SP -= 1;
-                bus.write_byte(self.registers.SP, self.registers.L);
+                bus.write(self.registers.SP, self.registers.L);
             }
             Regs::AF => {
                 self.registers.SP -= 1;
-                bus.write_byte(self.registers.SP, self.registers.A);
+                bus.write(self.registers.SP, self.registers.A);
 
                 self.registers.SP -= 1;
-                bus.write_byte(self.registers.SP, self.registers.F);
+                bus.write(self.registers.SP, self.registers.F);
             }
             _ => {}
         }
@@ -1312,9 +1312,9 @@ impl CPU {
         bus.tick(1);
 
         self.registers.SP -= 1;
-        bus.write_byte(self.registers.SP, ((self.registers.PC) >> 8) as u8);
+        bus.write(self.registers.SP, ((self.registers.PC) >> 8) as u8);
         self.registers.SP -= 1;
-        bus.write_byte(self.registers.SP, self.registers.PC as u8);
+        bus.write(self.registers.SP, self.registers.PC as u8);
 
         self.registers.PC = value;
     }
@@ -1337,8 +1337,8 @@ impl CPU {
     }
 
     fn ret(&mut self, bus: &mut Bus) {
-        let lower_byte = bus.read_byte(self.registers.SP);
-        let higher_byte = bus.read_byte(self.registers.SP + 1);
+        let lower_byte = bus.read(self.registers.SP);
+        let higher_byte = bus.read(self.registers.SP + 1);
 
         self.registers.PC = (higher_byte as u16) << 8 | lower_byte as u16;
         self.registers.SP += 2;
@@ -1365,8 +1365,8 @@ impl CPU {
     }
 
     fn halt(&mut self, bus: &Bus) {
-        let ie = bus.memory[0xFFFF];
-        let if_flag = bus.memory[0xFF0F];
+        let ie = bus.interrupt_handler.inte;
+        let if_flag = bus.interrupt_handler.intf;
 
         if self.ime {
             if ie & if_flag & 0x1F == 0 {

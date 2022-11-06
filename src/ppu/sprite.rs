@@ -15,7 +15,7 @@ pub fn get_current_sprites_per_line(ly: u8, height_mode: bool, oam: &[u8]) -> Ve
         let y = attributes[0] - 16;
         let sprite_height = if height_mode { 8 } else { 16 };
 
-        // TODO: y-check
+        // TODO: y-check maybe?
 
         if (y..y + sprite_height).contains(&ly) && sprites.len() < 10 {
             let x = attributes[1] - 8;
@@ -40,12 +40,12 @@ impl Sprite {
         }
     }
 
-    /// Checks if `x_pos` of `other` is between the sprite
-    ///
-    /// Only checks for overlap on the "right" side (for now)
-    pub fn has_overlap(&self, other: &Sprite) -> bool {
-        (self.x_pos..self.x_pos + 8).contains(&other.x_pos)
-    }
+    // /// Checks if `x_pos` of `other` is between the sprite
+    // ///
+    // /// Only checks for overlap on the "right" side (for now)
+    // pub fn has_overlap(&self, other: &Sprite) -> bool {
+    //     (self.x_pos..self.x_pos + 8).contains(&other.x_pos)
+    // }
 
     pub fn is_y_flipped(&self) -> bool {
         self.attr & 0x40 != 0

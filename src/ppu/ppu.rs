@@ -33,7 +33,7 @@ pub struct PPU {
 }
 
 impl MMIO for PPU {
-    fn read(&self, address: u16) -> u8 {
+    fn read(&mut self, address: u16) -> u8 {
         match address {
             0xFF40 => self.regs.lcdc,
             0xFF41 => self.regs.stat,
@@ -100,7 +100,7 @@ impl PPU {
     // should tick 4 times per m-cycle
     // 456 clocks per scanline
     // 80 (Mode2) - 172 (Mode3) - 204 (HBlank) - VBlank
-    pub fn tick(&mut self, memory: &mut [u8], interrupt_handler: &mut InterruptHandler) {
+    pub fn tick(&mut self, vram: &[u8], oam: &[u8], interrupt_handler: &mut InterruptHandler) {
         if self.regs.is_lcd_on() {
             if self.regs.ly_lyc() {
                 self.regs.stat |= 0b100;
@@ -114,7 +114,7 @@ impl PPU {
             }
 
             if self.regs.ly < 144 {
-                self.handle_line0_to_line143(memory, interrupt_handler);
+                self.handle_line0_to_line143(vram, oam, interrupt_handler);
             } else {
                 if self.cycles_passed >= 456 {
                     self.regs.ly += 1;
@@ -143,10 +143,6 @@ impl PPU {
         self.dma_pending = false
     }
 
-    // --------------------------
-    //          DMA
-    // --------------------------
-
     fn turn_lcd_off(&mut self) {
         self.regs.ly = 0;
         self.internal_window_line = 0;
@@ -160,15 +156,15 @@ impl PPU {
     /// State machine that handles all lines and modes before VBlank
     fn handle_line0_to_line143(
         &mut self,
-        memory: &mut [u8],
+        vram: &[u8],
+        oam: &[u8],
         interrupt_handler: &mut InterruptHandler,
     ) {
         match self.cycles_passed {
             0 => {
                 self.change_mode(Mode::Mode2, Some(interrupt_handler));
 
-                // TODO: scan oam for sprites
-                let oam = &memory[0xFE00..=0xFE9F];
+                // scan oam for sprites
                 self.current_sprites = sprite::get_current_sprites_per_line(
                     self.regs.ly,
                     self.regs.is_sprite_8x8(),
@@ -180,7 +176,7 @@ impl PPU {
 
                 // "draw" pixels into current line
                 if self.current_line.is_empty() {
-                    self.current_line = self.get_current_line(memory);
+                    self.current_line = self.get_current_line(vram);
                 }
             }
             252 => {
@@ -214,7 +210,7 @@ impl PPU {
         }
     }
 
-    fn get_current_line(&mut self, memory: &mut [u8]) -> Vec<Color32> {
+    fn get_current_line(&mut self, vram: &[u8]) -> Vec<Color32> {
         let mut current_line: Vec<Color32> = Vec::new();
 
         // bg enable
@@ -222,16 +218,16 @@ impl PPU {
             let unsigned_addressing = self.regs.lcdc & 0b10000 != 0;
 
             let bg_tile_map_area = if self.regs.lcdc & 0b1000 == 0 {
-                0x9800
+                0x9800 - 0x8000
             } else {
-                0x9C00
+                0x9C00 - 0x8000
             };
 
             let adjusted_y = self.regs.ly + self.regs.scy;
             let tile_map_start = bg_tile_map_area + (((adjusted_y / 8) as usize) * 0x20);
 
             for index in tile_map_start..=(tile_map_start + 0x1F) {
-                let tile_row = self.get_tile_row(memory, unsigned_addressing, index, adjusted_y);
+                let tile_row = self.get_tile_row(vram, unsigned_addressing, index, adjusted_y);
                 current_line.extend(tile_row);
             }
 
@@ -239,25 +235,23 @@ impl PPU {
             current_line.rotate_left(self.regs.scx as usize);
 
             // Draw window over bg if enabled and visible
-            if self.regs.is_window_enabled() {
-                if self.regs.is_window_visible() && self.regs.ly >= self.regs.wy {
-                    let win_tile_map_area = if self.regs.lcdc & 0x40 == 0 {
-                        0x9800
-                    } else {
-                        0x9C00
-                    };
+            if self.regs.is_window_enabled() && self.regs.is_window_visible() && self.regs.ly >= self.regs.wy {
+                let win_tile_map_area = if self.regs.lcdc & 0x40 == 0 {
+                    0x9800 - 0x8000
+                } else {
+                    0x9C00 - 0x8000
+                };
 
-                    let win_y = self.internal_window_line;
-                    let tile_map_start = win_tile_map_area + (((win_y / 8) as usize) * 0x20);
+                let win_y = self.internal_window_line;
+                let tile_map_start = win_tile_map_area + (((win_y / 8) as usize) * 0x20);
 
-                    for (j, index) in (tile_map_start..=(tile_map_start + 0x1F)).enumerate() {
-                        let tile_row = self.get_tile_row(memory, unsigned_addressing, index, win_y);
+                for (j, index) in (tile_map_start..=(tile_map_start + 0x1F)).enumerate() {
+                    let tile_row = self.get_tile_row(vram, unsigned_addressing, index, win_y);
 
-                        for i in 0..8 {
-                            if (((self.regs.wx - 7) as usize) + i + (j * 8)) < 256 {
-                                current_line[((self.regs.wx - 7) as usize) + i + (j * 8)] =
-                                    tile_row[i];
-                            }
+                    for i in 0..8 {
+                        if (((self.regs.wx - 7) as usize) + i + (j * 8)) < 256 {
+                            current_line[((self.regs.wx - 7) as usize) + i + (j * 8)] =
+                                tile_row[i];
                         }
                     }
                 }
@@ -296,7 +290,7 @@ impl PPU {
                     }
                 };
 
-                let sprite_tile = 0x8000 + (current_tile as usize) * 16;
+                let sprite_tile = (current_tile as usize) * 16;
                 let ly_bytes = ((self.regs.ly - sprite.y_pos) % 8) as usize;
 
                 let palette = if sprite.get_obp_num() == 0 {
@@ -306,15 +300,15 @@ impl PPU {
                 };
 
                 let first_byte = if !sprite.is_y_flipped() {
-                    memory[sprite_tile + (2 * ly_bytes)]
+                    vram[sprite_tile + (2 * ly_bytes)]
                 } else {
-                    memory[sprite_tile + (2 * (7 - ly_bytes))]
+                    vram[sprite_tile + (2 * (7 - ly_bytes))]
                 };
 
                 let second_byte = if !sprite.is_y_flipped() {
-                    memory[sprite_tile + (2 * ly_bytes + 1)]
+                    vram[sprite_tile + (2 * ly_bytes + 1)]
                 } else {
-                    memory[sprite_tile + (2 * (7 - ly_bytes) + 1)]
+                    vram[sprite_tile + (2 * (7 - ly_bytes) + 1)]
                 };
 
                 for i in (0..8).rev() {
@@ -346,19 +340,19 @@ impl PPU {
 
     fn get_tile_row(
         &self,
-        memory: &[u8],
+        vram: &[u8],
         unsigned_addressing: bool,
         index: usize,
         y: u8,
     ) -> [Color32; 8] {
         let mut current_line: [Color32; 8] = [LCD_WHITE; 8];
 
-        let line_index = (memory[index] as usize) * 16;
+        let line_index = (vram[index] as usize) * 16;
         let ly_bytes = (y % 8) as usize;
 
         if unsigned_addressing {
-            let first_byte = memory[0x8000 + line_index + (2 * ly_bytes)];
-            let second_byte = memory[0x8000 + line_index + (2 * ly_bytes + 1)];
+            let first_byte = vram[line_index + (2 * ly_bytes)];
+            let second_byte = vram[line_index + (2 * ly_bytes + 1)];
 
             for i in (0..8).rev() {
                 let lsb = (first_byte & (1 << i)) >> i;
@@ -367,18 +361,18 @@ impl PPU {
                 current_line[7 - i] = convert_to_color(msb << 1 | lsb, Palette::BGP(self.regs.bgp));
             }
         } else {
-            let first_byte = if memory[index] <= 127 {
-                memory[0x9000 + line_index + (2 * ly_bytes)]
+            let first_byte = if vram[index] <= 127 {
+                vram[(0x9000 - 0x8000) + line_index + (2 * ly_bytes)]
             } else {
-                let line_index = ((memory[index] as usize) % 128) * 16;
-                memory[0x8800 + line_index + (2 * ly_bytes)]
+                let line_index = ((vram[index] as usize) % 128) * 16;
+                vram[(0x8800 - 0x8000) + line_index + (2 * ly_bytes)]
             };
 
-            let second_byte = if memory[index] <= 127 {
-                memory[0x9000 + line_index + (2 * ly_bytes + 1)]
+            let second_byte = if vram[index] <= 127 {
+                vram[(0x9000 - 0x8000) + line_index + (2 * ly_bytes + 1)]
             } else {
-                let line_index = ((memory[index] as usize) % 128) * 16;
-                memory[0x8800 + line_index + (2 * ly_bytes + 1)]
+                let line_index = ((vram[index] as usize) % 128) * 16;
+                vram[(0x8800 - 0x8000) + line_index + (2 * ly_bytes + 1)]
             };
 
             for i in (0..8).rev() {

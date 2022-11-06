@@ -6,37 +6,139 @@ use crate::{
 };
 
 pub struct Bus {
-    // one memory array not ideal
-    pub memory: [u8; 0x10000],
+    pub rom_bank_0: [u8; 0x4000],
+    pub rom_bank_x: [u8; 0x4000],
 
-    pub timer: Timers,
-    pub ppu: PPU,
+    pub vram: [u8; 0x2000],
+    pub external_ram: [u8; 0x1000],
+    pub wram: [u8; 0x2000],
 
-    pub interrupt_handler: InterruptHandler,
+    pub echo_ram: [u8; 0x1E00], // mirror of C000-DDFF
+    pub oam: [u8; 0xA0],
+
     pub joypad: Joypad,
+    // serial...
+    pub timer: Timers,
+    pub ppu: PPU, // lcdc, stat, scx, scy,...
+
+    pub hram: [u8; 0xAF],
+    pub interrupt_handler: InterruptHandler,
+
+    disable_boot_rom: u8,
 }
+
+// ----------------------------
+// MMIO trait for read/write (access via bus causes tick)
+// ----------------------------
+
+impl MMIO for Bus {
+    fn read(&mut self, address: u16) -> u8 {
+        self.tick(1);
+
+        match address {
+            0x0000..=0x3FFF => self.rom_bank_0[address as usize],
+            0x4000..=0x7FFF => self.rom_bank_x[address as usize - 0x4000],
+            0x8000..=0x9FFF => self.vram[address as usize - 0x8000],
+            0xA000..=0xBFFF => self.external_ram[address as usize - 0xA000],
+            0xC000..=0xDFFF => self.wram[address as usize - 0xC000],
+            0xE000..=0xFDFF => self.echo_ram[address as usize - 0xE000],
+            0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00],
+            0xFEA0..=0xFEFF => 0xFF, // usage of this area not prohibited, may trigger oam corruption
+            0xFF00..=0xFF7F => {
+                match address {
+                    0xFF00 => self.joypad.read(address),
+                    // serial
+                    0xFF04..=0xFF07 => self.timer.read(address),
+                    // audio
+                    0xFF0F => self.interrupt_handler.intf,
+                    0xFF40..=0xFF4B => self.ppu.read(address),
+                    0xFF4D => 0xFF, // KEY1
+                    0xFF50 => self.disable_boot_rom,
+                    _ => 0xFF,
+                }
+            }
+            0xFF80..=0xFFFE => self.hram[address as usize - 0xFF80],
+            0xFFFF => self.interrupt_handler.inte,
+            // _ => unreachable!("Address out of scope: {:#06X}", address),
+        }
+    }
+
+    fn write(&mut self, address: u16, value: u8) {
+        self.tick(1);
+
+        match address {
+            0x0000..=0x3FFF => self.rom_bank_0[address as usize] = value,
+            0x4000..=0x7FFF => self.rom_bank_x[address as usize - 0x4000] = value,
+            0x8000..=0x9FFF => self.vram[address as usize - 0x8000] = value,
+            0xA000..=0xBFFF => self.external_ram[address as usize - 0xA000] = value,
+            0xC000..=0xDFFF => {
+                self.wram[address as usize - 0xC000] = value;
+
+                // mirror wram partially into echo ram
+                if address <= 0xDDFF {
+                    self.echo_ram[address as usize - 0xC000] = value;
+                }
+            }
+            0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00] = value,
+            0xFEA0..=0xFEFF => {} // not usable area
+            0xFF00..=0xFF7F => {
+                match address {
+                    0xFF00 => self.joypad.write(address, value),
+                    // serial
+                    0xFF04..=0xFF07 => self.timer.write(address, value),
+                    // audio
+                    0xFF0F => self.interrupt_handler.intf = value,
+                    0xFF40..=0xFF4B => self.ppu.write(address, value),
+                    0xFF50 => self.disable_boot_rom = value,
+                    _ => {}
+                }
+            }
+            0xFF80..=0xFFFE => self.hram[address as usize - 0xFF80] = value,
+            0xFFFF => self.interrupt_handler.inte = value,
+            _ => unreachable!("Write to invalid address: {:#06X}", address),
+        }
+    }
+}
+
+// ----------------------------
+// Normal impl for Bus
+// ----------------------------
 
 impl Bus {
     pub fn new() -> Self {
         Self {
-            memory: [0xFF; 0x10000],
+            rom_bank_0: [0; 0x4000],
+            rom_bank_x: [0; 0x4000],
 
+            vram: [0; 0x2000],
+            external_ram: [0; 0x1000],
+            wram: [0; 0x2000],
+
+            echo_ram: [0; 0x1E00],
+            oam: [0; 0xA0],
+
+            joypad: Joypad::default(),
             timer: Timers::new(),
             ppu: PPU::new(),
 
+            hram: [0; 0xAF],
             interrupt_handler: InterruptHandler::default(),
-            joypad: Joypad::default(),
+            disable_boot_rom: 0,
         }
     }
 
+    // mbc0 only for now
     pub fn load_rom_into_memory(&mut self, rom: &[u8]) {
-        self.memory[..32768].copy_from_slice(rom);
+        let (bank_0, bank_x) = rom.split_at(0x4000);
+
+        self.rom_bank_0.copy_from_slice(bank_0);
+        self.rom_bank_x.copy_from_slice(bank_x);
+
         self.initialize_internal_registers();
     }
 
     pub fn tick(&mut self, cycles_passed: u16) {
         if self.timer.if_fired != 0 {
-            self.memory[0xFF0F] |= self.timer.if_fired;
             self.interrupt_handler.intf |= self.timer.if_fired;
             self.timer.if_fired = 0;
 
@@ -47,21 +149,19 @@ impl Bus {
 
         // PPU ticks 4 times per M-cycle
         for _ in 0..(cycles_passed * 4) {
-            self.ppu.tick(&mut self.memory, &mut self.interrupt_handler);
+            self.ppu
+                .tick(&self.vram, &self.oam, &mut self.interrupt_handler);
         }
 
         // maybe delay?
         if self.ppu.is_dma_pending() {
             self.dma_transfer();
         }
-
-        self.memory[0xFF04] = (self.timer.div >> 8) as u8;
-        self.memory[0xFF05] = self.timer.tima;
     }
 
     pub fn read_16(&mut self, address: u16) -> u16 {
-        let lower_byte = self.read_byte(address);
-        let higher_byte = self.read_byte(address + 1);
+        let lower_byte = self.read(address);
+        let higher_byte = self.read(address + 1);
 
         (higher_byte as u16) << 8 | lower_byte as u16
     }
@@ -69,85 +169,8 @@ impl Bus {
     pub fn write_16(&mut self, address: u16, value: u16) {
         let bytes = value.to_le_bytes();
 
-        self.write_byte(address, bytes[0]);
-        self.write_byte(address + 1, bytes[1]);
-    }
-
-    pub fn read_byte(&mut self, address: u16) -> u8 {
-        self.tick(1);
-
-        match address {
-            0xFF00 => self.joypad.read(0xFF00), // TODO address
-            0xFF0F => self.interrupt_handler.intf,
-            0xFF40..=0xFF4B => self.ppu.read(address),
-            0xFFFF => self.interrupt_handler.inte,
-            _ => self.memory[address as usize],
-        }
-    }
-
-    pub fn write_byte(&mut self, address: u16, byte: u8) {
-        self.tick(1);
-        match address {
-            0x0000..=0x7FFF => {}
-            0x8000..=0x9FFF => {
-                // println!("VRAM access to {:#08X}", address);
-                self.memory[address as usize] = byte;
-            }
-            0xA000..=0xBFFF => {
-                // println!("External RAM access to {:#08X}", address);
-                self.memory[address as usize] = byte;
-            }
-            0xC000..=0xDFFF => {
-                // println!("WRAM access to {:#08X}", address);
-                self.memory[address as usize] = byte;
-            }
-            0xE000..=0xFDFF => {} // println!("Echo RAM, ignore write"),
-            0xFE00..=0xFE9F => self.memory[address as usize] = byte,
-            0xFEA0..=0xFEFF => {} // println!("Not usable, usage of this area is prohibited"),
-            0xFF00..=0xFF7F => {
-                match address {
-                    0xFF00 => self.joypad.write(0, byte),
-                    // 0xFF01 => // eprint!("{}", byte as char), // SB output for blargg tests
-                    0xFF04 => {
-                        // DIV register: any write resets it to 0
-                        self.memory[address as usize] = 0;
-                        self.timer.reset_div();
-                    }
-                    0xFF05 => {
-                        self.memory[address as usize] = byte;
-                        self.timer.tima = byte;
-                    }
-                    0xFF06 => {
-                        self.memory[address as usize] = byte;
-                        self.timer.tma = byte;
-                    }
-                    0xFF07 => {
-                        self.memory[address as usize] = byte;
-                        self.timer.tac = byte;
-                    }
-                    0xFF40..=0xFF4B => {
-                        self.ppu.write(address, byte);
-                    }
-                    0xFF0F => {
-                        self.interrupt_handler.intf = byte;
-                        self.memory[address as usize] = byte;
-                    }
-                    _ => {
-                        // println!("IO registers");
-                        self.memory[address as usize] = byte;
-                    }
-                }
-            }
-            0xFF80..=0xFFFE => {
-                // println!("HRAM access to {:#08X}", address);
-                self.memory[address as usize] = byte;
-            }
-            0xFFFF => {
-                // println!("Write to Interrupt Enable register (IE)");
-                self.interrupt_handler.inte = byte;
-                self.memory[address as usize] = byte;
-            }
-        }
+        self.write(address, bytes[0]);
+        self.write(address + 1, bytes[1]);
     }
 
     pub fn handle_interrupts(&mut self, cpu: &mut CPU) -> bool {
@@ -167,10 +190,10 @@ impl Bus {
                     self.tick(2); // 2 nop delay
 
                     cpu.registers.SP -= 1;
-                    self.write_byte(cpu.registers.SP, pc_bytes[0]);
+                    self.write(cpu.registers.SP, pc_bytes[0]);
 
                     cpu.registers.SP -= 1;
-                    self.write_byte(cpu.registers.SP, pc_bytes[1]);
+                    self.write(cpu.registers.SP, pc_bytes[1]);
 
                     cpu.registers.PC = interrupt as u16;
                     self.tick(1);
@@ -196,7 +219,7 @@ impl Bus {
         self.ppu.reset_dma();
 
         for (dest_ind, addr) in (source_start..=source_end).enumerate() {
-            self.write_byte(0xFE00 + (dest_ind as u16), self.memory[addr as usize]);
+            self.oam[dest_ind] = self.read(addr);
         }
     }
 
@@ -206,11 +229,7 @@ impl Bus {
     /// Only needed if no boot rom is used.
     fn initialize_internal_registers(&mut self) {
         self.joypad.write(0, 0xCF); // P1 / JOYP
-
-        self.memory[0xFF07] = 0xF8; // TAC
-        self.memory[0xFF4D] = 0xFF; // KEY1
-        self.memory[0xFF50] = 0x01; // Disable BOOT ROM
-
+        self.disable_boot_rom = 0x01; // 0xFF50
         self.interrupt_handler.intf = 0xE1; // IF
 
         self.ppu.write(0xFF40, 0x91); // LCDC

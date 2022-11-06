@@ -1,3 +1,5 @@
+use crate::mmu::mmio::MMIO;
+
 pub struct Timers {
     pub div: u16,
     pub tima: u8,
@@ -5,6 +7,28 @@ pub struct Timers {
     pub tac: u8,
     pub if_fired: u8,
     cycles_tima: u16,
+}
+
+impl MMIO for Timers {
+    fn read(&mut self, address: u16) -> u8 {
+        match address {
+            0xFF04 => (self.div >> 8) as u8,
+            0xFF05 => self.tima,
+            0xFF06 => self.tma,
+            0xFF07 => self.tac,
+            _ => unreachable!("Unreachable Timer register read"),
+        }
+    }
+
+    fn write(&mut self, address: u16, value: u8) {
+        match address {
+            0xFF04 => self.div = 0,
+            0xFF05 => self.tima = value,
+            0xFF06 => self.tma = value,
+            0xFF07 => self.tac = value,
+            _ => unreachable!("Unreachable Timer register write"),
+        }
+    }
 }
 
 impl Timers {

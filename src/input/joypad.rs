@@ -17,7 +17,7 @@ enum ButtonType {
 }
 
 impl MMIO for Joypad {
-    fn read(&self, _address: u16) -> u8 {
+    fn read(&mut self, _address: u16) -> u8 {
         self.joyp
     }
 
