@@ -38,7 +38,10 @@ impl MMIO for Bus {
             0x0000..=0x3FFF => self.rom_bank_0[address as usize],
             0x4000..=0x7FFF => self.rom_bank_x[address as usize - 0x4000],
             0x8000..=0x9FFF => self.vram[address as usize - 0x8000],
-            0xA000..=0xBFFF => self.external_ram[address as usize - 0xA000],
+            0xA000..=0xBFFF => {
+                // read 0xFF when RAM is disabled
+                self.external_ram[address as usize - 0xA000]
+            }
             0xC000..=0xFDFF => self.wram[address as usize & 0x1FFF],
             0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00],
             0xFEA0..=0xFEFF => 0xFF, // usage of this area not prohibited, may trigger oam corruption
@@ -68,7 +71,10 @@ impl MMIO for Bus {
             0x0000..=0x3FFF => {}, // don't write to ROM
             0x4000..=0x7FFF => {}, // don't write to ROM
             0x8000..=0x9FFF => self.vram[address as usize - 0x8000] = value,
-            0xA000..=0xBFFF => self.external_ram[address as usize - 0xA000] = value,
+            0xA000..=0xBFFF => {
+                // ignore writes when RAM is disabled and MBC0
+                // self.external_ram[address as usize - 0xA000] = value
+            }
             0xC000..=0xFDFF => self.wram[address as usize & 0x1FFF] = value,
             0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00] = value,
             0xFEA0..=0xFEFF => {} // not usable area
@@ -98,20 +104,20 @@ impl MMIO for Bus {
 impl Bus {
     pub fn new() -> Self {
         Self {
-            rom_bank_0: [0; 0x4000],
-            rom_bank_x: [0; 0x4000],
+            rom_bank_0: [0xFF; 0x4000],
+            rom_bank_x: [0xFF; 0x4000],
 
-            vram: [0; 0x2000],
-            external_ram: [0; 0x2000],
-            wram: [0; 0x2000],
+            vram: [0xFF; 0x2000],
+            external_ram: [0xFF; 0x2000],
+            wram: [0xFF; 0x2000],
 
-            oam: [0; 0xA0],
+            oam: [0xFF; 0xA0],
 
             joypad: Joypad::default(),
             timer: Timers::new(),
             ppu: PPU::new(),
 
-            hram: [0; 0xAF],
+            hram: [0xFF; 0xAF],
             interrupt_handler: InterruptHandler::default(),
             disable_boot_rom: 0,
         }
