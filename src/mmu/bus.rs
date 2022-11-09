@@ -53,7 +53,6 @@ impl MMIO for Bus {
                     // audio
                     0xFF0F => self.interrupt_handler.intf,
                     0xFF40..=0xFF4B => self.ppu.read(address),
-                    0xFF4D => 0xFF, // KEY1
                     0xFF50 => self.disable_boot_rom,
                     _ => 0xFF,
                 }
