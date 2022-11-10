@@ -2,6 +2,7 @@
 
 use ui::ui::Kevboy;
 
+mod cartridge;
 mod cpu;
 mod emulator;
 mod input;

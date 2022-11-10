@@ -67,8 +67,8 @@ impl MMIO for Bus {
         self.tick(1);
 
         match address {
-            0x0000..=0x3FFF => {}, // don't write to ROM
-            0x4000..=0x7FFF => {}, // don't write to ROM
+            0x0000..=0x3FFF => {} // don't write to ROM
+            0x4000..=0x7FFF => {} // don't write to ROM
             0x8000..=0x9FFF => self.vram[address as usize - 0x8000] = value,
             0xA000..=0xBFFF => {
                 // ignore writes when RAM is disabled and MBC0

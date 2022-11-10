@@ -235,7 +235,10 @@ impl PPU {
             current_line.rotate_left(self.regs.scx as usize);
 
             // Draw window over bg if enabled and visible
-            if self.regs.is_window_enabled() && self.regs.is_window_visible() && self.regs.ly >= self.regs.wy {
+            if self.regs.is_window_enabled()
+                && self.regs.is_window_visible()
+                && self.regs.ly >= self.regs.wy
+            {
                 let win_tile_map_area = if self.regs.lcdc & 0x40 == 0 {
                     0x9800 - 0x8000
                 } else {
@@ -250,8 +253,7 @@ impl PPU {
 
                     for i in 0..8 {
                         if (((self.regs.wx - 7) as usize) + i + (j * 8)) < 256 {
-                            current_line[((self.regs.wx - 7) as usize) + i + (j * 8)] =
-                                tile_row[i];
+                            current_line[((self.regs.wx - 7) as usize) + i + (j * 8)] = tile_row[i];
                         }
                     }
                 }
