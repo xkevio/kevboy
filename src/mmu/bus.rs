@@ -2,17 +2,14 @@ use crate::{
     cpu::{cpu::CPU, interrupts::InterruptHandler},
     input::joypad::Joypad,
     mmu::{mmio::MMIO, timer::Timers},
-    ppu::ppu::PPU,
+    ppu::ppu::PPU, cartridge::base_cartridge::Cartridge,
 };
 
 pub struct Bus {
-    pub rom_bank_0: [u8; 0x4000],
-    pub rom_bank_x: [u8; 0x4000],
+    pub cartridge: Cartridge,
 
     pub vram: [u8; 0x2000],
-    pub external_ram: [u8; 0x2000],
     pub wram: [u8; 0x2000],
-
     pub oam: [u8; 0xA0],
 
     pub joypad: Joypad,
@@ -35,12 +32,11 @@ impl MMIO for Bus {
         self.tick(1);
 
         match address {
-            0x0000..=0x3FFF => self.rom_bank_0[address as usize],
-            0x4000..=0x7FFF => self.rom_bank_x[address as usize - 0x4000],
+            0x0000..=0x7FFF => self.cartridge.read(address),
             0x8000..=0x9FFF => self.vram[address as usize - 0x8000],
             0xA000..=0xBFFF => {
                 // read 0xFF when RAM is disabled
-                self.external_ram[address as usize - 0xA000]
+                self.cartridge.external_ram[address as usize - 0xA000]
             }
             0xC000..=0xFDFF => self.wram[address as usize & 0x1FFF],
             0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00],
@@ -67,8 +63,7 @@ impl MMIO for Bus {
         self.tick(1);
 
         match address {
-            0x0000..=0x3FFF => {} // don't write to ROM
-            0x4000..=0x7FFF => {} // don't write to ROM
+            0x0000..=0x7FFF => self.cartridge.write(address, value),
             0x8000..=0x9FFF => self.vram[address as usize - 0x8000] = value,
             0xA000..=0xBFFF => {
                 // ignore writes when RAM is disabled and MBC0
@@ -103,13 +98,10 @@ impl MMIO for Bus {
 impl Bus {
     pub fn new() -> Self {
         Self {
-            rom_bank_0: [0xFF; 0x4000],
-            rom_bank_x: [0xFF; 0x4000],
+            cartridge: Cartridge::default(),
 
             vram: [0xFF; 0x2000],
-            external_ram: [0xFF; 0x2000],
             wram: [0xFF; 0x2000],
-
             oam: [0xFF; 0xA0],
 
             joypad: Joypad::default(),
@@ -122,13 +114,9 @@ impl Bus {
         }
     }
 
-    // mbc0 only for now
+    // loads 16kB into bank 0 and initializes hw registers
     pub fn load_rom_into_memory(&mut self, rom: &[u8]) {
-        let (bank_0, bank_x) = rom.split_at(0x4000);
-
-        self.rom_bank_0.copy_from_slice(bank_0);
-        self.rom_bank_x.copy_from_slice(bank_x);
-
+        self.cartridge.rom_bank_0.copy_from_slice(rom);
         self.initialize_internal_registers();
     }
 
@@ -150,7 +138,7 @@ impl Bus {
 
         // maybe delay?
         if self.ppu.is_dma_pending() {
-            self.dma_transfer();
+            self.oam_dma_transfer();
         }
     }
 
@@ -207,7 +195,7 @@ impl Bus {
         }
     }
 
-    fn dma_transfer(&mut self) {
+    fn oam_dma_transfer(&mut self) {
         let source_start = (self.ppu.read(0xFF46) as u16) * 0x100;
         let source_end = source_start + 0x9F;
 

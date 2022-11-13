@@ -1,5 +1,6 @@
 use crate::mmu::mmio::MMIO;
 
+#[derive(Clone, Copy, PartialEq)]
 pub struct MBC1 {
     pub ram_enable: bool,
     pub rom_bank_number: u8,
