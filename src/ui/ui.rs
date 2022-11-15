@@ -46,7 +46,7 @@ impl Default for Kevboy {
 impl App for Kevboy {
     fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
         self.history.update(ctx, frame);
-        frame.set_window_title(&format!("Kevboy-rs ({} fps)", self.history.fps().trunc()));
+        frame.set_window_title(&format!("Kevboy ({} fps)", self.history.fps().trunc()));
 
         let image = RetainedImage::from_color_image(
             "frame",

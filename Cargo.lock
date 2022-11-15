@@ -921,7 +921,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kevboy-rs"
+name = "kevboy"
 version = "0.1.0"
 dependencies = [
  "eframe",
