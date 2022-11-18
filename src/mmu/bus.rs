@@ -1,8 +1,9 @@
 use crate::{
+    cartridge::base_cartridge::Cartridge,
     cpu::{cpu::CPU, interrupts::InterruptHandler},
     input::joypad::Joypad,
     mmu::{mmio::MMIO, timer::Timers},
-    ppu::ppu::PPU, cartridge::base_cartridge::Cartridge,
+    ppu::ppu::PPU,
 };
 
 pub struct Bus {
@@ -34,10 +35,7 @@ impl MMIO for Bus {
         match address {
             0x0000..=0x7FFF => self.cartridge.read(address),
             0x8000..=0x9FFF => self.vram[address as usize - 0x8000],
-            0xA000..=0xBFFF => {
-                // read 0xFF when RAM is disabled
-                self.cartridge.external_ram[address as usize - 0xA000]
-            }
+            0xA000..=0xBFFF => self.cartridge.read(address),
             0xC000..=0xFDFF => self.wram[address as usize & 0x1FFF],
             0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00],
             0xFEA0..=0xFEFF => 0xFF, // usage of this area not prohibited, may trigger oam corruption
@@ -65,10 +63,7 @@ impl MMIO for Bus {
         match address {
             0x0000..=0x7FFF => self.cartridge.write(address, value),
             0x8000..=0x9FFF => self.vram[address as usize - 0x8000] = value,
-            0xA000..=0xBFFF => {
-                // ignore writes when RAM is disabled and MBC0
-                // self.external_ram[address as usize - 0xA000] = value
-            }
+            0xA000..=0xBFFF => self.cartridge.write(address, value),
             0xC000..=0xFDFF => self.wram[address as usize & 0x1FFF] = value,
             0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00] = value,
             0xFEA0..=0xFEFF => {} // not usable area
@@ -112,12 +107,6 @@ impl Bus {
             interrupt_handler: InterruptHandler::default(),
             disable_boot_rom: 0,
         }
-    }
-
-    // loads 16kB into bank 0 and initializes hw registers
-    pub fn load_rom_into_memory(&mut self, rom: &[u8]) {
-        self.cartridge.rom_bank_0.copy_from_slice(rom);
-        self.initialize_internal_registers();
     }
 
     pub fn tick(&mut self, cycles_passed: u16) {
@@ -210,7 +199,7 @@ impl Bus {
     /// to their values after booting on the DMG model.
     ///
     /// Only needed if no boot rom is used.
-    fn initialize_internal_registers(&mut self) {
+    pub fn initialize_internal_registers(&mut self) {
         self.joypad.write(0, 0xCF); // P1 / JOYP
         self.disable_boot_rom = 0x01; // 0xFF50
         self.interrupt_handler.intf = 0xE1; // IF

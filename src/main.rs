@@ -18,7 +18,7 @@ fn main() {
     let native_options = eframe::NativeOptions::default();
 
     eframe::run_native(
-        "Kevboy-rs",
+        "Kevboy",
         native_options,
         Box::new(|_| Box::new(Kevboy::default())),
     );

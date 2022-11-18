@@ -21,26 +21,6 @@ macro_rules! reg8 {
     };
 }
 
-// TODO: test
-// macro_rules! apply_reg8 {
-//     ($self:ident, $func:ident, $bits:expr, $bus:ident) => {
-//         match $bits {
-//             0 => $self.registers.B = $func($self.registers.B),
-//             1 => $self.registers.C = $func($self.registers.C),
-//             2 => $self.registers.D = $func($self.registers.D),
-//             3 => $self.registers.E = $func($self.registers.E),
-//             4 => $self.registers.H = $func($self.registers.H),
-//             5 => $self.registers.L = $func($self.registers.L),
-//             6 => {
-//                 let hl_byte = $bus.read($self.registers.get_hl());
-//                 $bus.write($self.registers.get_hl(), $func(hl_byte));
-//             }
-//             7 => $self.registers.A = $func($self.registers.A),
-//             _ => unreachable!("Invalid register!"),
-//         }
-//     };
-// }
-
 #[allow(clippy::upper_case_acronyms)]
 pub struct CPU {
     pub registers: Registers,
