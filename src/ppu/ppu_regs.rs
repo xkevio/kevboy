@@ -1,4 +1,3 @@
-#[derive(Default)]
 pub(crate) struct PPURegisters {
     pub lcdc: u8,
     pub stat: u8,
@@ -12,6 +11,25 @@ pub(crate) struct PPURegisters {
     pub opb0: u8,
     pub opb1: u8,
     pub dma: u8,
+}
+
+impl Default for PPURegisters {
+    fn default() -> Self {
+        Self {
+            lcdc: 0x91,
+            stat: 0x81,
+            scy: 0x00,
+            scx: 0x00,
+            ly: 0x00,
+            lyc: 0x00,
+            wy: 0x00,
+            wx: 0x00,
+            bgp: 0xFC,
+            opb0: 0x00,
+            opb1: 0x00,
+            dma: 0xFF,
+        }
+    }
 }
 
 impl PPURegisters {

@@ -1,6 +1,9 @@
 use crate::{
     cartridge::base_cartridge::Cartridge,
-    cpu::{cpu::CPU, interrupts::InterruptHandler},
+    cpu::{
+        cpu::CPU,
+        interrupts::{Interrupt, InterruptHandler},
+    },
     input::joypad::Joypad,
     mmu::{mmio::MMIO, timer::Timers},
     ppu::ppu::PPU,
@@ -44,8 +47,9 @@ impl MMIO for Bus {
                     0xFF00 => self.joypad.read(address),
                     // serial
                     0xFF04..=0xFF07 => self.timer.read(address),
-                    // audio
                     0xFF0F => self.interrupt_handler.intf,
+                    // audio
+                    0xFF24 => 0x00, // pokemon audio workaround
                     0xFF40..=0xFF4B => self.ppu.read(address),
                     0xFF50 => self.disable_boot_rom,
                     _ => 0xFF,
@@ -105,16 +109,15 @@ impl Bus {
 
             hram: [0xFF; 0xAF],
             interrupt_handler: InterruptHandler::default(),
-            disable_boot_rom: 0,
+            disable_boot_rom: 0x01,
         }
     }
 
     pub fn tick(&mut self, cycles_passed: u16) {
-        if self.timer.if_fired != 0 {
-            self.interrupt_handler.intf |= self.timer.if_fired;
-            self.timer.if_fired = 0;
-
+        if self.timer.irq {
+            self.timer.irq = false;
             self.timer.tima = self.timer.tma;
+            self.interrupt_handler.request_interrupt(Interrupt::Timer);
         }
 
         self.timer.tick(cycles_passed);
@@ -193,23 +196,5 @@ impl Bus {
         for (dest_ind, addr) in (source_start..=source_end).enumerate() {
             self.oam[dest_ind] = self.read(addr);
         }
-    }
-
-    /// Initializes some internal memory-mapped registers
-    /// to their values after booting on the DMG model.
-    ///
-    /// Only needed if no boot rom is used.
-    pub fn initialize_internal_registers(&mut self) {
-        self.joypad.write(0, 0xCF); // P1 / JOYP
-        self.disable_boot_rom = 0x01; // 0xFF50
-        self.interrupt_handler.intf = 0xE1; // IF
-
-        self.ppu.write(0xFF40, 0x91); // LCDC
-        self.ppu.write(0xFF41, 0x81); // STAT
-
-        self.ppu.write(0xFF46, 0xFF); // DMA
-        self.ppu.reset_dma();
-
-        self.ppu.write(0xFF47, 0xFC); // BGP
     }
 }

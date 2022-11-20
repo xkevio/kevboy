@@ -5,7 +5,6 @@ use crate::{
     mmu::mmio::MMIO,
 };
 
-#[derive(Default)]
 pub struct Joypad {
     joyp: u8,
 }
@@ -14,6 +13,12 @@ pub struct Joypad {
 enum ButtonType {
     Action,
     Direction,
+}
+
+impl Default for Joypad {
+    fn default() -> Self {
+        Self { joyp: 0xCF }
+    }
 }
 
 impl MMIO for Joypad {

@@ -8,10 +8,18 @@ pub enum Interrupt {
     Joypad = 0x60,
 }
 
-#[derive(Default)]
 pub struct InterruptHandler {
     pub inte: u8,
     pub intf: u8,
+}
+
+impl Default for InterruptHandler {
+    fn default() -> Self {
+        Self {
+            inte: 0x00,
+            intf: 0xE1,
+        }
+    }
 }
 
 impl InterruptHandler {

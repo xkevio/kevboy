@@ -54,8 +54,6 @@ impl Emulator {
         println!("{:#06X}", rom[0x0147]);
 
         self.bus.cartridge = Cartridge::new(cartridge_type, title);
-        self.bus.initialize_internal_registers();
-
         self.rom = rom.to_vec(); // TODO: redundant?
         self.cpu.registers.load_header_checksum(rom[0x014D]);
     }
