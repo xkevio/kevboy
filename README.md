@@ -1,6 +1,6 @@
 # WIP Gameboy (DMG) Emulator
 
-**MBC0** and **MBC1** currently, other MBCs are next on the TODO list.
+**MBC0**, **MBC1** and **MBC5** currently, other MBCs are next on the TODO list.
 
 ### Passed tests:
 
