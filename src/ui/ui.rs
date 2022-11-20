@@ -24,6 +24,7 @@ pub struct Kevboy {
 
     // To count and calculate frames per second, smoothed
     history: FrameHistory,
+    frame_time: Instant, // TODO: fix vsync
 
     mem_viewer: MemoryViewer,
     is_memory_viewer_open: bool,
@@ -36,6 +37,7 @@ impl Default for Kevboy {
             frame_buffer: [127, 134, 15, 255].repeat(LCD_WIDTH * LCD_HEIGHT),
 
             history: FrameHistory::default(),
+            frame_time: Instant::now(),
 
             mem_viewer: MemoryViewer::new(),
             is_memory_viewer_open: false,
@@ -57,6 +59,8 @@ impl App for Kevboy {
         // ----------------------------------
         //      Start of UI declarations
         // ----------------------------------
+
+        self.frame_time = Instant::now();
 
         TopBottomPanel::top("menu").show(ctx, |ui| {
             menu::bar(ui, |ui| {
@@ -185,8 +189,6 @@ impl App for Kevboy {
 
 impl Kevboy {
     fn run(&mut self, ctx: &Context) {
-        let start = Instant::now();
-
         while self.emulator.cycle_count < 17_476 {
             self.emulator
                 .bus
@@ -206,7 +208,7 @@ impl Kevboy {
 
         self.frame_buffer = buf;
 
-        while start.elapsed() < Duration::from_micros(16667) {
+        while self.frame_time.elapsed() < Duration::from_micros(16667) {
             // do nothing
         }
 

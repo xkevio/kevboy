@@ -1,5 +1,6 @@
 use crate::cartridge::base_cartridge::{Cartridge, CartridgeType};
 use crate::cartridge::mbc::mbc1::MBC1;
+use crate::cartridge::mbc::mbc5::MBC5;
 use crate::cartridge::mbc::no_mbc::NoMBC;
 use crate::cpu::cpu::CPU;
 use crate::mmu::bus::Bus;
@@ -40,7 +41,7 @@ impl Emulator {
             0x01 | 0x02 | 0x03 => CartridgeType::MBC1(MBC1::new(rom, rom_size_kb, ram_size_kb)),
             0x05 | 0x06 => CartridgeType::MBC2,
             0x0F..=0x13 => CartridgeType::MBC3,
-            0x19..=0x1E => CartridgeType::MBC5,
+            0x19..=0x1E => CartridgeType::MBC5(MBC5::new(rom, rom_size_kb, ram_size_kb)),
             0x22 => CartridgeType::MBC7,
             _ => unimplemented!("Cartridge type not supported!"),
         };
@@ -50,6 +51,7 @@ impl Emulator {
             .or(std::str::from_utf8(&rom[0x0134..=0x013E]))
             .unwrap();
         println!("{title}");
+        println!("{:#06X}", rom[0x0147]);
 
         self.bus.cartridge = Cartridge::new(cartridge_type, title);
         self.bus.initialize_internal_registers();
