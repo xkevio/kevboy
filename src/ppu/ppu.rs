@@ -4,8 +4,10 @@ use crate::{
     cpu::interrupts::{Interrupt, InterruptHandler},
     mmu::mmio::MMIO,
     ppu::{color_palette::*, ppu_regs::PPURegisters, sprite, sprite::Sprite},
-    LCD_HEIGHT, LCD_WIDTH,
 };
+
+pub const LCD_WIDTH: usize = 160;
+pub const LCD_HEIGHT: usize = 144;
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 enum Mode {

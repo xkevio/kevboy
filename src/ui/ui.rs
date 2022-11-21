@@ -1,7 +1,4 @@
-use std::{
-    fs,
-    time::{Duration, Instant},
-};
+use std::fs;
 
 use eframe::{
     egui::{
@@ -13,8 +10,12 @@ use eframe::{
 };
 use egui_extras::RetainedImage;
 
-use crate::{cpu::registers::Flag, ui::memory_viewer::MemoryViewer};
-use crate::{emulator::Emulator, LCD_HEIGHT, LCD_WIDTH};
+use crate::emulator::Emulator;
+use crate::{
+    cpu::registers::Flag,
+    ppu::ppu::{LCD_HEIGHT, LCD_WIDTH},
+    ui::memory_viewer::MemoryViewer,
+};
 
 use crate::ui::frame_history::FrameHistory;
 
@@ -24,8 +25,6 @@ pub struct Kevboy {
 
     // To count and calculate frames per second, smoothed
     history: FrameHistory,
-    frame_time: Instant, // TODO: fix vsync
-
     mem_viewer: MemoryViewer,
     is_memory_viewer_open: bool,
 }
@@ -37,8 +36,6 @@ impl Default for Kevboy {
             frame_buffer: [127, 134, 15, 255].repeat(LCD_WIDTH * LCD_HEIGHT),
 
             history: FrameHistory::default(),
-            frame_time: Instant::now(),
-
             mem_viewer: MemoryViewer::new(),
             is_memory_viewer_open: false,
         }
@@ -59,8 +56,6 @@ impl App for Kevboy {
         // ----------------------------------
         //      Start of UI declarations
         // ----------------------------------
-
-        self.frame_time = Instant::now();
 
         TopBottomPanel::top("menu").show(ctx, |ui| {
             menu::bar(ui, |ui| {
@@ -189,7 +184,7 @@ impl App for Kevboy {
 
 impl Kevboy {
     fn run(&mut self, ctx: &Context) {
-        while self.emulator.cycle_count < 17_476 {
+        while self.emulator.cycle_count < 17_556 {
             self.emulator
                 .bus
                 .joypad
@@ -207,11 +202,6 @@ impl Kevboy {
             .collect();
 
         self.frame_buffer = buf;
-
-        while self.frame_time.elapsed() < Duration::from_micros(16667) {
-            // do nothing
-        }
-
         self.emulator.cycle_count = 0;
         self.emulator.bus.joypad.reset_pressed_keys();
     }

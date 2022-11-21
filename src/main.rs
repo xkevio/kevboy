@@ -10,11 +10,9 @@ mod mmu;
 mod ppu;
 mod ui;
 
-const LCD_WIDTH: usize = 160;
-const LCD_HEIGHT: usize = 144;
-
 fn main() {
-    // simple_logger::init().unwrap();
+    // use native vsync for "sync to video" to keep gameboy at 60fps (technically 59.73)
+    // will only work on 60Hz displays for now
     let native_options = eframe::NativeOptions::default();
 
     eframe::run_native(
