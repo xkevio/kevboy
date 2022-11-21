@@ -13,7 +13,7 @@ impl NoMBC {
 
 impl MMIO for NoMBC {
     fn read(&mut self, address: u16) -> u8 {
-        if address < 0x7FFF {
+        if address < 0x8000 {
             self.rom[address as usize]
         } else {
             0xFF
