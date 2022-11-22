@@ -9,6 +9,8 @@ use crate::{
     ppu::ppu::PPU,
 };
 
+use super::serial::Serial;
+
 pub struct Bus {
     pub cartridge: Cartridge,
 
@@ -17,7 +19,7 @@ pub struct Bus {
     pub oam: [u8; 0xA0],
 
     pub joypad: Joypad,
-    // serial...
+    pub serial: Serial,
     pub timer: Timers,
     pub ppu: PPU, // lcdc, stat, scx, scy,...
 
@@ -45,7 +47,7 @@ impl MMIO for Bus {
             0xFF00..=0xFF7F => {
                 match address {
                     0xFF00 => self.joypad.read(address),
-                    // serial
+                    0xFF01 | 0xFF02 => self.serial.read(address),
                     0xFF04..=0xFF07 => self.timer.read(address),
                     0xFF0F => self.interrupt_handler.intf,
                     // audio
@@ -57,7 +59,6 @@ impl MMIO for Bus {
             }
             0xFF80..=0xFFFE => self.hram[address as usize - 0xFF80],
             0xFFFF => self.interrupt_handler.inte,
-            // _ => unreachable!("Address out of scope: {:#06X}", address),
         }
     }
 
@@ -74,7 +75,7 @@ impl MMIO for Bus {
             0xFF00..=0xFF7F => {
                 match address {
                     0xFF00 => self.joypad.write(address, value),
-                    // serial
+                    0xFF01 | 0xFF02 => self.serial.write(address, value),
                     0xFF04..=0xFF07 => self.timer.write(address, value),
                     // audio
                     0xFF0F => self.interrupt_handler.intf = value,
@@ -85,7 +86,6 @@ impl MMIO for Bus {
             }
             0xFF80..=0xFFFE => self.hram[address as usize - 0xFF80] = value,
             0xFFFF => self.interrupt_handler.inte = value,
-            // _ => unreachable!("Write to invalid address: {:#06X}", address),
         }
     }
 }
@@ -104,6 +104,7 @@ impl Bus {
             oam: [0xFF; 0xA0],
 
             joypad: Joypad::default(),
+            serial: Serial::default(),
             timer: Timers::new(),
             ppu: PPU::new(),
 
@@ -121,6 +122,7 @@ impl Bus {
         }
 
         self.timer.tick(cycles_passed);
+        self.serial.tick(&mut self.interrupt_handler, cycles_passed);
 
         // PPU ticks 4 times per M-cycle
         for _ in 0..(cycles_passed * 4) {
@@ -128,7 +130,7 @@ impl Bus {
                 .tick(&self.vram, &self.oam, &mut self.interrupt_handler);
         }
 
-        // maybe delay?
+        // TODO: dma is delayed one cycle -- write -> nothing -> DMA
         if self.ppu.is_dma_pending() {
             self.oam_dma_transfer();
         }

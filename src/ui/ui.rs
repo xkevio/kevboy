@@ -198,7 +198,7 @@ impl Kevboy {
             .ppu
             .frame_buffer
             .iter()
-            .flat_map(|c| [c.r(), c.g(), c.b(), c.a()])
+            .flat_map(|c| c.to_array())
             .collect();
 
         self.frame_buffer = buf;

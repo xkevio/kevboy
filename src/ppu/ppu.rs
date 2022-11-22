@@ -142,8 +142,10 @@ impl PPU {
     }
 
     pub fn reset_dma(&mut self) {
-        self.dma_pending = false
+        self.dma_pending = false;
     }
+
+    // --------------------------
 
     fn turn_lcd_off(&mut self) {
         self.regs.ly = 0;
