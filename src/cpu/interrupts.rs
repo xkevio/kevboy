@@ -23,6 +23,7 @@ impl Default for InterruptHandler {
 }
 
 impl InterruptHandler {
+    // TODO: refactor
     pub fn get_enabled_interrupts(&self) -> [Option<Interrupt>; 5] {
         let vblank = ((self.inte & 0b1) != 0).then_some(Interrupt::VBlank);
         let stat = ((self.inte & 0b10) != 0).then_some(Interrupt::STAT);

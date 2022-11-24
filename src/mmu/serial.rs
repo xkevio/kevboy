@@ -1,16 +1,12 @@
 use crate::cpu::interrupts::{Interrupt, InterruptHandler};
-
-use super::mmio::MMIO;
-
-/// It takes 128 m-cycles to receive / transfer one bit (8192Hz)
-const DMG_CLOCK_FREQ_CYCLES: u16 = 128;
+use crate::mmu::mmio::MMIO;
 
 pub struct Serial {
     sb: u8,
     sc: u8,
 
     counter: u8,
-    cycles_passed: u16,
+    and_result_falling_edge: bool,
 }
 
 impl Default for Serial {
@@ -20,7 +16,7 @@ impl Default for Serial {
             sc: 0x7E,
 
             counter: 1,
-            cycles_passed: 0,
+            and_result_falling_edge: false,
         }
     }
 }
@@ -44,28 +40,29 @@ impl MMIO for Serial {
 }
 
 impl Serial {
-    pub fn tick(&mut self, interrupt_handler: &mut InterruptHandler, cycles_passed: u16) {
-        self.cycles_passed += cycles_passed;
+    pub fn tick(&mut self, interrupt_handler: &mut InterruptHandler, cycles_passed: u16, div: u16) {
+        for _ in 0..(cycles_passed * 4) {
+            if self.and_result_falling_edge && !(((div & (1 << 8)) != 0) & self.is_internal_clock())
+            {
+                if self.counter <= 8 {
+                    self.sb = (self.sb << self.counter) | (0xFF >> (8 - self.counter));
+                    self.counter += 1;
+                }
 
-        while self.cycles_passed >= DMG_CLOCK_FREQ_CYCLES {
-            // always assume internal clock (DMG) and 0xFF as receiving byte for emulation
-            if self.is_transfer_requested() && self.counter <= 8 {
-                self.sb = (self.sb << self.counter) | (0xFF >> (8 - self.counter));
-                self.counter += 1;
+                if self.counter > 8 {
+                    self.counter = 1;
+                    self.sc = 0x01;
+
+                    interrupt_handler.request_interrupt(Interrupt::Serial);
+                }
             }
 
-            if self.counter > 8 {
-                self.counter = 1;
-                self.sc = 0x01;
-
-                interrupt_handler.request_interrupt(Interrupt::Serial);
-            }
-
-            self.cycles_passed -= DMG_CLOCK_FREQ_CYCLES;
+            self.and_result_falling_edge = ((div & (1 << 8)) != 0) & self.is_internal_clock();
         }
     }
 
-    fn is_transfer_requested(&self) -> bool {
-        self.sc & (1 << 7) != 0
+    // bit 0 is internal or external clock -- external clock is effectively disable for emulation
+    fn is_internal_clock(&self) -> bool {
+        self.sc & 1 != 0
     }
 }

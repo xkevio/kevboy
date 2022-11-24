@@ -119,7 +119,8 @@ impl Bus {
         }
 
         self.timer.tick(cycles_passed);
-        self.serial.tick(&mut self.interrupt_handler, cycles_passed);
+        self.serial
+            .tick(&mut self.interrupt_handler, cycles_passed, self.timer.div);
 
         // PPU ticks 4 times per M-cycle
         for _ in 0..(cycles_passed * 4) {
