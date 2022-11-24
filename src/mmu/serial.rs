@@ -42,8 +42,7 @@ impl MMIO for Serial {
 impl Serial {
     pub fn tick(&mut self, interrupt_handler: &mut InterruptHandler, cycles_passed: u16, div: u16) {
         for _ in 0..(cycles_passed * 4) {
-            if self.and_result_falling_edge && !(((div & (1 << 8)) != 0) & self.is_internal_clock())
-            {
+            if self.and_result_falling_edge && !self.get_current_falling_edge(div) {
                 if self.counter <= 8 {
                     self.sb = (self.sb << self.counter) | (0xFF >> (8 - self.counter));
                     self.counter += 1;
@@ -57,8 +56,17 @@ impl Serial {
                 }
             }
 
-            self.and_result_falling_edge = ((div & (1 << 8)) != 0) & self.is_internal_clock();
+            self.and_result_falling_edge = self.get_current_falling_edge(div);
         }
+    }
+
+    /// Serial timer is based on DIV, bit 8: 8kHz, and falling edge (see schematic)
+    fn get_current_falling_edge(&self, div: u16) -> bool {
+        ((div & (1 << 8)) != 0) & self.is_internal_clock() & self.is_transfer_requested()
+    }
+
+    fn is_transfer_requested(&self) -> bool {
+        self.sc & (1 << 7) != 0
     }
 
     // bit 0 is internal or external clock -- external clock is effectively disable for emulation
