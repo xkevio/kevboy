@@ -43,16 +43,6 @@ impl InterruptHandler {
         }
     }
 
-    pub fn reset_if(&mut self, interrupt: Interrupt) {
-        match interrupt {
-            Interrupt::VBlank => self.intf &= !(0b1),
-            Interrupt::STAT => self.intf &= !(0b10),
-            Interrupt::Timer => self.intf &= !(0b100),
-            Interrupt::Serial => self.intf &= !(0b1000),
-            Interrupt::Joypad => self.intf &= !(0b10000),
-        }
-    }
-
     pub fn request_interrupt(&mut self, interrupt: Interrupt) {
         match interrupt {
             Interrupt::VBlank => self.intf |= 0b1,
@@ -60,6 +50,16 @@ impl InterruptHandler {
             Interrupt::Timer => self.intf |= 0b100,
             Interrupt::Serial => self.intf |= 0b1000,
             Interrupt::Joypad => self.intf |= 0b10000,
+        }
+    }
+
+    pub fn reset_if(&mut self, interrupt: Interrupt) {
+        match interrupt {
+            Interrupt::VBlank => self.intf &= !(0b1),
+            Interrupt::STAT => self.intf &= !(0b10),
+            Interrupt::Timer => self.intf &= !(0b100),
+            Interrupt::Serial => self.intf &= !(0b1000),
+            Interrupt::Joypad => self.intf &= !(0b10000),
         }
     }
 }

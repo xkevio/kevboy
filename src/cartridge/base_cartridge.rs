@@ -4,7 +4,7 @@ use crate::cartridge::mbc::no_mbc::NoMBC;
 use crate::mmu::mmio::MMIO;
 
 #[allow(clippy::upper_case_acronyms)]
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub enum CartridgeType {
     NoMBC(NoMBC),
     MBC1(MBC1),

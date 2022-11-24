@@ -1,6 +1,6 @@
 use crate::mmu::mmio::MMIO;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub struct MBC5 {
     pub rom: Vec<u8>,
     pub external_ram: Vec<[u8; 0x2000]>,
@@ -40,7 +40,7 @@ impl MMIO for MBC5 {
                     ((self.rom_bank_bit9 as u16) << 8) | (self.rom_bank_number as u16);
 
                 let address = (rom_bank as u32 * 0x4000) + (address as u32 - 0x4000);
-                self.rom[address as usize & self.rom.len() - 1]
+                self.rom[address as usize & (self.rom.len() - 1)]
             }
             0xA000..=0xBFFF => {
                 if self.ram_enable {

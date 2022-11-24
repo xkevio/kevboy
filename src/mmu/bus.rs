@@ -1,9 +1,6 @@
 use crate::{
     cartridge::base_cartridge::Cartridge,
-    cpu::{
-        cpu::CPU,
-        interrupts::{Interrupt, InterruptHandler},
-    },
+    cpu::interrupts::{Interrupt, InterruptHandler},
     input::joypad::Joypad,
     mmu::{mmio::MMIO, timer::Timers},
     ppu::ppu::PPU,
@@ -148,45 +145,6 @@ impl Bus {
 
         self.write(address, bytes[0]);
         self.write(address + 1, bytes[1]);
-    }
-
-    pub fn handle_interrupts(&mut self, cpu: &mut CPU) -> bool {
-        if cpu.ime {
-            for interrupt in self
-                .interrupt_handler
-                .get_enabled_interrupts()
-                .into_iter()
-                .flatten()
-            {
-                if self.interrupt_handler.is_interrupt_requested(interrupt) {
-                    self.interrupt_handler.reset_if(interrupt);
-                    cpu.ime = false;
-                    cpu.halt = false;
-
-                    let pc_bytes = cpu.registers.PC.to_be_bytes();
-                    self.tick(2); // 2 nop delay
-
-                    cpu.registers.SP -= 1;
-                    self.write(cpu.registers.SP, pc_bytes[0]);
-
-                    cpu.registers.SP -= 1;
-                    self.write(cpu.registers.SP, pc_bytes[1]);
-
-                    cpu.registers.PC = interrupt as u16;
-                    self.tick(1);
-
-                    return true;
-                }
-            }
-
-            return false;
-        } else {
-            if self.interrupt_handler.inte & self.interrupt_handler.intf & 0x1F != 0 {
-                cpu.halt = false;
-            }
-
-            return false;
-        }
     }
 
     fn oam_dma_transfer(&mut self) {

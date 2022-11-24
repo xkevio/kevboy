@@ -352,7 +352,7 @@ impl CPU {
                     let address = bus.read_16(self.registers.PC);
                     bus.write_16(address, self.registers.SP);
 
-                    self.registers.PC += 2; // TODO
+                    self.registers.PC += 2;
                     5
                 }
                 0x09 | 0x19 | 0x29 | 0x39 => {
@@ -405,7 +405,7 @@ impl CPU {
                     2
                 }
                 0x0F => { self.rrca(); 1 }
-                0x10 => { println!("STOP, not implemented"); bus.timer.div = 0;  1 } // TODO
+                0x10 => { println!("STOP, not implemented"); bus.timer.div = 0;  1 }
                 0x17 => { self.rla(); 1 }
                 0x18 => {
                     let value = self.fetch_operand(bus);
@@ -492,7 +492,7 @@ impl CPU {
                     let condition = (opcode >> 3) & 0b11;
                     let value = bus.read_16(self.registers.PC);
 
-                    self.registers.PC += 2; // TODO
+                    self.registers.PC += 2;
 
                     match condition {
                         0 | 1 => self.jp_flag(Flag::Zero, value, condition != 0, bus),
@@ -510,7 +510,7 @@ impl CPU {
                     let condition = (opcode >> 3) & 0b11;
                     let value = bus.read_16(self.registers.PC);
 
-                    self.registers.PC += 2; // TODO
+                    self.registers.PC += 2;
 
                     match condition {
                         0 | 1 => self.call_flag(bus, Flag::Zero, value, condition != 0),
@@ -595,7 +595,7 @@ impl CPU {
                     let address = bus.read_16(self.registers.PC);
                     bus.write(address, self.registers.A);
 
-                    self.registers.PC += 2; // TODO
+                    self.registers.PC += 2;
 
                     4
                 }
@@ -603,7 +603,7 @@ impl CPU {
                     let address = bus.read_16(self.registers.PC);
                     self.registers.A = bus.read(address);
 
-                    self.registers.PC += 2; // TODO
+                    self.registers.PC += 2;
 
                     4
                 }
@@ -626,6 +626,41 @@ impl CPU {
         }
 
     }
+
+    /// Calls the interrupt service routine between every instruction if necessary
+    pub fn handle_interrupts(&mut self, bus: &mut Bus) -> bool {
+        if self.ime {
+            for interrupt in bus
+                .interrupt_handler
+                .get_enabled_interrupts()
+                .into_iter()
+                .flatten()
+            {
+                if bus.interrupt_handler.is_interrupt_requested(interrupt) {
+                    bus.interrupt_handler.reset_if(interrupt);
+                    self.ime = false;
+                    self.halt = false;
+
+                    bus.tick(2); // 2 nop delay
+                    self.call(bus, interrupt as u16);
+
+                    return true;
+                }
+            }
+
+            false
+        } else {
+            if bus.interrupt_handler.inte & bus.interrupt_handler.intf & 0x1F != 0 {
+                self.halt = false;
+            }
+
+            false
+        }
+    }
+
+    // ------------------------------
+    // opcode handling
+    // ------------------------------
 
     /// Read next operand at PC and increase PC after.
     fn fetch_operand(&mut self, bus: &mut Bus) -> u8 {
@@ -1137,7 +1172,6 @@ impl CPU {
         self.registers.set_flag(Flag::HalfCarry, false);
     }
 
-    // TODO: different cycle counts
     /// Only for `Zero` and `Carry` flag.
     ///
     /// Maps to `jr nz`, `jr nc`, `jr z` and `jr c`.  
@@ -1360,6 +1394,10 @@ impl CPU {
             }
         }
     }
+
+    // ---------------------------
+    // half-carry shenanigans
+    // ---------------------------
 
     /// https://robdor.com/2016/08/10/gameboy-emulator-half-carry-flag/
     ///

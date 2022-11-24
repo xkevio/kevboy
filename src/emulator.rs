@@ -47,8 +47,8 @@ impl Emulator {
         };
 
         let title = std::str::from_utf8(&rom[0x0134..=0x0143])
-            .or(std::str::from_utf8(&rom[0x0134..=0x0142]))
-            .or(std::str::from_utf8(&rom[0x0134..=0x013E]))
+            .or_else(|_| std::str::from_utf8(&rom[0x0134..=0x0142]))
+            .or_else(|_| std::str::from_utf8(&rom[0x0134..=0x013E]))
             .unwrap();
         println!("{title}");
         println!("{:#06X}", rom[0x0147]);
@@ -59,7 +59,7 @@ impl Emulator {
     }
 
     pub fn step(&mut self) -> u8 {
-        if self.bus.handle_interrupts(&mut self.cpu) {
+        if self.cpu.handle_interrupts(&mut self.bus) {
             self.cycle_count += 5;
         }
 

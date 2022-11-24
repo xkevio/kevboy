@@ -1,6 +1,6 @@
 use crate::mmu::mmio::MMIO;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub struct NoMBC {
     pub rom: Vec<u8>,
 }

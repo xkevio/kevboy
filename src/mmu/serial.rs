@@ -3,7 +3,7 @@ use crate::cpu::interrupts::{Interrupt, InterruptHandler};
 use super::mmio::MMIO;
 
 /// It takes 128 m-cycles to receive / transfer one bit (8192Hz)
-const DMG_CLOCK_FREQ_CYCLES: u16 = 128; 
+const DMG_CLOCK_FREQ_CYCLES: u16 = 128;
 
 pub struct Serial {
     sb: u8,
