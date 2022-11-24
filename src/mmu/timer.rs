@@ -7,7 +7,7 @@ pub struct Timers {
     pub tac: u8,
 
     pub irq: bool,
-    and_result_falling_edge: u8,
+    and_result_falling_edge: bool,
 }
 
 impl MMIO for Timers {
@@ -17,7 +17,7 @@ impl MMIO for Timers {
             0xFF05 => self.tima,
             0xFF06 => self.tma,
             0xFF07 => self.tac,
-            _ => unreachable!("Unreachable Timer register read"),
+            _ => unreachable!("Unreachable timer register read"),
         }
     }
 
@@ -27,7 +27,7 @@ impl MMIO for Timers {
             0xFF05 => self.tima = value,
             0xFF06 => self.tma = value,
             0xFF07 => self.tac = value,
-            _ => unreachable!("Unreachable Timer register write"),
+            _ => unreachable!("Unreachable timer register write"),
         }
     }
 }
@@ -41,7 +41,7 @@ impl Timers {
             tac: 0xF8,
 
             irq: false,
-            and_result_falling_edge: 0,
+            and_result_falling_edge: false,
         }
     }
 
@@ -51,18 +51,17 @@ impl Timers {
             self.tick_div();
             self.tick_tima();
 
-            self.and_result_falling_edge =
-                self.get_sys_counter_bit(self.tac & 0b11) & ((self.tac & 0b100) >> 2);
+            self.and_result_falling_edge = self.get_timer_falling_edge();
         }
     }
 
     /// Get bit of DIV in position specified by the lower 2 bits of the TAC register
-    fn get_sys_counter_bit(&self, tac_frequency: u8) -> u8 {
-        match tac_frequency {
-            0 => ((self.div & (1 << 9)) >> 9) as u8,
-            1 => ((self.div & (1 << 3)) >> 3) as u8,
-            2 => ((self.div & (1 << 5)) >> 5) as u8,
-            3 => ((self.div & (1 << 7)) >> 7) as u8,
+    fn get_sys_counter_bit(&self) -> bool {
+        match self.tac & 0b11 {
+            0 => (self.div & (1 << 9)) != 0,
+            1 => (self.div & (1 << 3)) != 0,
+            2 => (self.div & (1 << 5)) != 0,
+            3 => (self.div & (1 << 7)) != 0,
             _ => panic!("Invalid TAC frequency!"),
         }
     }
@@ -78,9 +77,7 @@ impl Timers {
         if !self.irq {
             // check for falling edge of "AND Result" -- bit of DIV & timer enable bit -- only then increase TIMA
             // obscure behavior, not necessary for most games but more accurate
-            if self.and_result_falling_edge == 1
-                && self.get_sys_counter_bit(self.tac & 0b11) & ((self.tac & 0b100) >> 2) == 0
-            {
+            if self.and_result_falling_edge && !self.get_timer_falling_edge() {
                 let (result, overflow) = self.tima.overflowing_add(1);
 
                 if overflow {
@@ -91,6 +88,11 @@ impl Timers {
                 }
             }
         }
+    }
+
+    /// TIMA increase is based on TAC frequency and DIV
+    fn get_timer_falling_edge(&self) -> bool {
+        self.get_sys_counter_bit() & self.is_timer_enabled()
     }
 
     fn is_timer_enabled(&self) -> bool {
