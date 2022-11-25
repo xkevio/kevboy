@@ -1,35 +1,55 @@
-# WIP Gameboy (DMG) Emulator
+# WIP Game Boy (DMG) Emulator
 
-**MBC0**, **MBC1** and **MBC5** currently, other MBCs are next on the TODO list.
+## Installation
 
-### Passed tests:
+- Clone with `git@github.com:xkevio/kevboy.git`
+- Build the project in release mode with `cargo`: `cargo build --release`
 
-dmg-acid2: Passed
+## Usage
 
-sprite_priority: Passed
+Open a ROM via `File > Open ROM`. 
 
-01-special: Passed
+A boot rom is not provided, the state of the Game Boy after the boot rom finishes is emulated.
 
-02-interrupts: Passed
+Serial (link cable) is emulated in so far that games that rely on it do work, though no emulation of actual linking between two Game Boys is implemented.
 
-03-op sp,hl: Passed
+**Supported Memory Bank Controllers:** 
+- **MBC0**
+- **MBC1**
+- **MBC5**
 
-04-op r,imm: Passed
+## Passed tests:
 
-05-op rp: Passed
+### CPU tests:
 
-06-ld r,r: Passed
+| Test              | Status |
+|-------------------|--------|
+| `cpu_instrs.gb`   | ✅     |
+| `mem-timing.gb`   | ✅     |
+| `instr_timing.gb` | ✅     |
 
-07-jr,jp,call,ret,rst: Passed
+### PPU tests:
 
-08-misc instrs: Passed
+| Test              | Status |
+|-------------------|--------|
+| `dmg-acid2.gb`   | ✅     |
+| `sprite_priority.gb`   | ✅     |
 
-09-op r,r: Passed
+### Timer tests:
 
-10-bit ops: Passed
+| Test                   | Status |
+|------------------------|--------|
+| `div_write.gb`         | ✅      |
+| `tim00.gb`             | ✅      |
+| `tim00_div_trigger.gb` | ✅      |
+| `tim01.gb`             | ✅       |
+| `tim01_div_trigger.gb` | ✅       |
+| `tim10.gb`             | ✅       |
+| `tim10_div_trigger.gb` | ✅       |
+| `tim11.gb`             | ✅       |
+| `tim11_div_trigger.gb` | ✅       |
+| `tima_reload.gb`       | ✅       |
 
-11-op a,(hl): Passed
+### Misc. tests:
 
-instr_timing: Passed
-
-mem_timing-{1,2}: Passed
+*// TODO*
