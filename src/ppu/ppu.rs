@@ -24,7 +24,7 @@ pub struct PPU {
     current_line: Vec<Color32>,
 
     regs: PPURegisters,
-    cycles_passed: i16,
+    cycles_passed: i16, // i16 so i can set it to -1
 
     current_mode: Mode,
     stat_block: bool,
@@ -214,7 +214,18 @@ impl PPU {
         }
     }
 
-    fn get_current_line(&mut self, vram: &[u8]) -> Vec<Color32> {
+    // -------------------------
+    // Rendering logic (bg & win)
+    // -------------------------
+
+    fn get_current_line(&self, vram: &[u8]) -> Vec<Color32> {
+        let bg_win_line = self.get_bg_win_line(vram);
+        let sprite_line = self.get_sprite_line(vram, &bg_win_line);
+
+        sprite_line
+    }
+
+    fn get_bg_win_line(&self, vram: &[u8]) -> Vec<Color32> {
         let mut current_line: Vec<Color32> = Vec::new();
 
         // bg enable
@@ -269,26 +280,36 @@ impl PPU {
             current_line = vec![LCD_WHITE; LCD_WIDTH];
         }
 
-        // ----------------------------
-        //      Sprites
-        // ----------------------------
+        current_line
+    }
+
+    // -------------------------
+    // Sprites
+    // -------------------------
+
+    // refactor?
+    fn get_sprite_line(&self, vram: &[u8], current_line: &[Color32]) -> Vec<Color32> {
+        let mut current_line: Vec<Color32> = Vec::from(current_line);
 
         if self.regs.is_obj_enabled() {
             for sprite in self.current_sprites.iter().rev() {
                 let upper_tile = sprite.tile_index & 0xFE;
                 let lower_tile = sprite.tile_index | 0x1;
 
+                let real_x_pos = sprite.x_pos as i16 - 8;
+                let real_y_pos = sprite.y_pos as i16 - 16;
+
                 let current_tile = if self.regs.is_sprite_8x8() {
                     sprite.tile_index
                 } else {
                     if sprite.is_y_flipped() {
-                        if (self.regs.ly + sprite.y_pos) % 16 >= 8 {
+                        if real_y_pos.abs_diff(self.regs.ly as i16) >= 8 {
                             upper_tile
                         } else {
                             lower_tile
                         }
                     } else {
-                        if (self.regs.ly + sprite.y_pos) % 16 >= 8 {
+                        if real_y_pos.abs_diff(self.regs.ly as i16) >= 8 {
                             lower_tile
                         } else {
                             upper_tile
@@ -297,7 +318,7 @@ impl PPU {
                 };
 
                 let sprite_tile = (current_tile as usize) * 16;
-                let ly_bytes = ((self.regs.ly - sprite.y_pos) % 8) as usize;
+                let ly_bytes = (real_y_pos.abs_diff(self.regs.ly as i16) % 8) as usize;
 
                 let palette = if sprite.get_obp_num() == 0 {
                     Palette::OBP(self.regs.opb0)
@@ -324,7 +345,7 @@ impl PPU {
                     let x_flip = if sprite.is_x_flipped() { i } else { 7 - i };
                     let x = (sprite.x_pos + x_flip) as usize;
 
-                    if msb << 1 | lsb != 0 {
+                    if (msb << 1 | lsb != 0) || real_x_pos >= 0 {
                         let color = if sprite.is_obj_prio() {
                             convert_to_color(msb << 1 | lsb, palette)
                         } else {
@@ -344,6 +365,9 @@ impl PPU {
         current_line
     }
 
+    /// Gets the 8 pixels of the current bg/win tile
+    ///
+    /// Can't use it for sprites because of the obj prio bit and flip bits
     fn get_tile_row(
         &self,
         vram: &[u8],
@@ -402,6 +426,10 @@ impl PPU {
         self.current_line.clear();
         self.current_sprites.clear();
     }
+
+    // -------------------------
+    // PPU STAT irq and mode change
+    // -------------------------
 
     // TODO: interrupt handler parameter
     fn change_mode(&mut self, to: Mode, interrupt_handler: Option<&mut InterruptHandler>) {
