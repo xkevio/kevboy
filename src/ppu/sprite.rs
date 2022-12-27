@@ -8,15 +8,17 @@ pub struct Sprite {
 
 // oam $FE00-$FE9F
 // 10 sprites per scanline
-pub fn get_current_sprites_per_line(ly: u8, height_mode: bool, oam: &[u8]) -> Vec<Sprite> {
+pub fn get_current_sprites_per_line(oam: &[u8], ly: u8, height_mode: bool) -> Vec<Sprite> {
     let mut sprites: Vec<Sprite> = Vec::new();
 
     for attributes in oam.chunks(4) {
-        let y = attributes[0]; // y + 16
+        let y = attributes[0]; // y + 16, bottom line of sprite
         let sprite_height = if height_mode { 8 } else { 16 };
 
-        if (y as i16..(y + sprite_height) as i16).contains(&(ly as i16)) && sprites.len() < 10 {
-            let x = attributes[1]; // x + 8
+        let ly_range = (y as i16 - 16)..(y as i16 - 16 + sprite_height as i16);
+
+        if ly_range.contains(&(ly as i16)) && sprites.len() < 10 {
+            let x = attributes[1]; // x + 8, right side of sprite
             let upper_tile_index = attributes[2];
             let attr = attributes[3];
 

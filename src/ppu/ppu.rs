@@ -170,9 +170,9 @@ impl PPU {
 
                 // scan oam for sprites
                 self.current_sprites = sprite::get_current_sprites_per_line(
+                    oam,
                     self.regs.ly,
                     self.regs.is_sprite_8x8(),
-                    oam,
                 );
             }
             80 => {
@@ -343,9 +343,13 @@ impl PPU {
                     let msb = (second_byte & (1 << i)) >> i;
 
                     let x_flip = if sprite.is_x_flipped() { i } else { 7 - i };
-                    let x = (sprite.x_pos + x_flip) as usize;
+                    
+                    if real_x_pos + x_flip < 0 {
+                        continue;
+                    } 
 
-                    if (msb << 1 | lsb != 0) || real_x_pos >= 0 {
+                    let x = (real_x_pos + x_flip) as usize;
+                    if (msb << 1 | lsb) != 0 {
                         let color = if sprite.is_obj_prio() {
                             convert_to_color(msb << 1 | lsb, palette)
                         } else {
