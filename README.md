@@ -18,6 +18,21 @@ Serial (link cable) is emulated in so far that games that rely on it do work, th
 - **MBC1**
 - **MBC5**
 
+## Controls:
+
+Currently, the controls cannot be customized as I am still focusing on the emulation core.
+
+|   **Keyboard**   | **Game Boy** |
+|:----------------:|:------------:|
+| <kbd>O</kbd>     | `B`          |
+| <kbd>P</kbd>     | `A`          |
+| <kbd>W</kbd>     | `Up`         |
+| <kbd>A</kbd>     | `Left`       |
+| <kbd>S</kbd>     | `Down`       |
+| <kbd>D</kbd>     | `Right`      |
+| <kbd>Enter</kbd> | `Start`      |
+| <kbd>Q</kbd>     | `Shift`      |
+
 ## Passed tests:
 
 ### CPU tests:

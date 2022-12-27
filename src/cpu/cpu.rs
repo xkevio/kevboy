@@ -3,8 +3,6 @@ use crate::{
     mmu::{bus::Bus, mmio::MMIO},
 };
 
-use std::ops::{Add, Sub};
-
 macro_rules! reg8 {
     ($self:ident, $bits:expr, $bus:ident) => {
         match $bits {
@@ -829,23 +827,27 @@ impl CPU {
         bus.write(value, self.registers.A);
     }
 
-    // make prettier, dont have 3 half_carry functions
     fn add_sp(&mut self, value: u8) {
         let signed_operand = -(value.wrapping_neg() as i8);
 
         self.registers.set_flag(
             Flag::HalfCarry,
-            self._check_if_half_carry_16(
+            self.hc(
                 self.registers.SP,
                 signed_operand as u16,
+                0xF,
                 u16::wrapping_add,
-                true,
             ),
         );
 
         self.registers.set_flag(
             Flag::Carry,
-            self._check_if_carry_16(self.registers.SP, signed_operand as u16, u16::wrapping_add),
+            self.hc(
+                self.registers.SP,
+                signed_operand as u16,
+                0xFF,
+                u16::wrapping_add,
+            ),
         );
 
         self.registers.SP += signed_operand as u16;
@@ -888,7 +890,7 @@ impl CPU {
 
         self.registers.set_flag(
             Flag::HalfCarry,
-            self._check_if_half_carry(value - 1, 1, Add::add),
+            self.hc(value - 1, 1, 0xF, u8::wrapping_add),
         );
 
         value
@@ -902,7 +904,7 @@ impl CPU {
 
         self.registers.set_flag(
             Flag::HalfCarry,
-            self._check_if_half_carry(value + 1, 1, Sub::sub),
+            self.hc(value + 1, 1, 0xF, u8::wrapping_sub),
         );
 
         value
@@ -934,11 +936,11 @@ impl CPU {
 
         match reg16 {
             Regs::BC => {
-                half_carry = self._check_if_half_carry_16(
+                half_carry = self.hc(
                     self.registers.get_hl(),
                     self.registers.get_bc(),
-                    Add::add,
-                    false,
+                    0xFFF,
+                    u16::wrapping_add,
                 );
 
                 let (result, cy) = self
@@ -950,11 +952,11 @@ impl CPU {
                 carry = cy;
             }
             Regs::DE => {
-                half_carry = self._check_if_half_carry_16(
+                half_carry = self.hc(
                     self.registers.get_hl(),
                     self.registers.get_de(),
-                    Add::add,
-                    false,
+                    0xFFF,
+                    u16::wrapping_add,
                 );
 
                 let (result, cy) = self
@@ -966,11 +968,11 @@ impl CPU {
                 carry = cy;
             }
             Regs::HL => {
-                half_carry = self._check_if_half_carry_16(
+                half_carry = self.hc(
                     self.registers.get_hl(),
                     self.registers.get_hl(),
-                    Add::add,
-                    false,
+                    0xFFF,
+                    u16::wrapping_add,
                 );
 
                 let (result, cy) = self
@@ -982,11 +984,11 @@ impl CPU {
                 carry = cy;
             }
             Regs::SP => {
-                half_carry = self._check_if_half_carry_16(
+                half_carry = self.hc(
                     self.registers.get_hl(),
                     self.registers.SP,
-                    Add::add,
-                    false,
+                    0xFFF,
+                    u16::wrapping_add,
                 );
 
                 let (result, cy) = self.registers.get_hl().overflowing_add(self.registers.SP);
@@ -1008,7 +1010,7 @@ impl CPU {
     fn add_a(&mut self, value: u8) {
         self.registers.set_flag(
             Flag::HalfCarry,
-            self._check_if_half_carry(self.registers.A, value, Add::add),
+            self.hc(self.registers.A, value, 0xF, u8::wrapping_add),
         );
 
         let (result, carry) = self.registers.A.overflowing_add(value);
@@ -1041,7 +1043,7 @@ impl CPU {
     fn sub_a(&mut self, value: u8) {
         self.registers.set_flag(
             Flag::HalfCarry,
-            self._check_if_half_carry(self.registers.A, value, Sub::sub),
+            self.hc(self.registers.A, value, 0xF, u8::wrapping_sub),
         );
 
         let (result, carry) = self.registers.A.overflowing_sub(value);
@@ -1100,7 +1102,7 @@ impl CPU {
     fn cp_a(&mut self, value: u8) {
         self.registers.set_flag(
             Flag::HalfCarry,
-            self._check_if_half_carry(self.registers.A, value, Sub::sub),
+            self.hc(self.registers.A, value, 0xF, u8::wrapping_sub),
         );
 
         let (result, carry) = self.registers.A.overflowing_sub(value);
@@ -1401,26 +1403,13 @@ impl CPU {
 
     /// https://robdor.com/2016/08/10/gameboy-emulator-half-carry-flag/
     ///
-    /// `F` should really **only** be `std::ops::Add:add` or `std::ops::Sub::sub`
-    fn _check_if_half_carry<F: Fn(u8, u8) -> u8>(&self, a: u8, b: u8, op: F) -> bool {
-        op(a & 0xF, b & 0xF) & 0x10 == 0x10
-    }
-
-    fn _check_if_half_carry_16<F: Fn(u16, u16) -> u16>(
-        &self,
-        a: u16,
-        b: u16,
-        op: F,
-        bit3: bool,
-    ) -> bool {
-        if !bit3 {
-            op(a & 0xFFF, b & 0xFFF) & 0x1000 == 0x1000
-        } else {
-            op(a & 0xF, b & 0xF) & 0x10 == 0x10
-        }
-    }
-
-    fn _check_if_carry_16<F: Fn(u16, u16) -> u16>(&self, a: u16, b: u16, op: F) -> bool {
-        op(a & 0xFF, b & 0xFF) & 0x100 == 0x100
+    /// `F` should really **only** be `std::ops::Add:add` or `std::ops::Sub::sub` or the wrapping variants.
+    fn hc<T, F>(&self, a: T, b: T, pos: T, op: F) -> bool
+    where
+        T: std::ops::BitAnd<Output = T> + Eq + std::ops::Add<Output = T> + TryFrom<u16> + Copy,
+        F: Fn(T, T) -> T,
+    {
+        op(a & pos, b & pos) & (pos + T::try_from(1).unwrap_or_else(|_| unreachable!()))
+            == pos + T::try_from(1).unwrap_or_else(|_| unreachable!())
     }
 }

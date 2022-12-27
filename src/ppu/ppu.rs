@@ -343,10 +343,10 @@ impl PPU {
                     let msb = (second_byte & (1 << i)) >> i;
 
                     let x_flip = if sprite.is_x_flipped() { i } else { 7 - i };
-                    
+
                     if real_x_pos + x_flip < 0 {
                         continue;
-                    } 
+                    }
 
                     let x = (real_x_pos + x_flip) as usize;
                     if (msb << 1 | lsb) != 0 {
