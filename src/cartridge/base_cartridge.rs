@@ -1,4 +1,6 @@
 use crate::cartridge::mbc::mbc1::MBC1;
+use crate::cartridge::mbc::mbc2::MBC2;
+use crate::cartridge::mbc::mbc3::MBC3;
 use crate::cartridge::mbc::mbc5::MBC5;
 use crate::cartridge::mbc::no_mbc::NoMBC;
 use crate::mmu::mmio::MMIO;
@@ -8,8 +10,8 @@ use crate::mmu::mmio::MMIO;
 pub enum CartridgeType {
     NoMBC(NoMBC),
     MBC1(MBC1),
-    MBC2,
-    MBC3,
+    MBC2(MBC2),
+    MBC3(MBC3),
     MBC5(MBC5),
     MBC7,
 }
@@ -42,6 +44,8 @@ impl MMIO for Cartridge {
         match &mut self.cartridge_type {
             CartridgeType::NoMBC(nombc) => nombc.read(address),
             CartridgeType::MBC1(mbc1) => mbc1.read(address),
+            CartridgeType::MBC2(mbc2) => mbc2.read(address),
+            CartridgeType::MBC3(mbc3) => mbc3.read(address),
             CartridgeType::MBC5(mbc5) => mbc5.read(address),
             _ => 0xFF,
         }
@@ -50,6 +54,8 @@ impl MMIO for Cartridge {
     fn write(&mut self, address: u16, value: u8) {
         match &mut self.cartridge_type {
             CartridgeType::MBC1(mbc1) => mbc1.write(address, value),
+            CartridgeType::MBC2(mbc2) => mbc2.write(address, value),
+            CartridgeType::MBC3(mbc3) => mbc3.write(address, value),
             CartridgeType::MBC5(mbc5) => mbc5.write(address, value),
             _ => {}
         }

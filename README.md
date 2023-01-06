@@ -7,15 +7,18 @@
 
 ## Usage
 
-Open a ROM via `File > Open ROM`. 
+Open a ROM via `File > Open ROM`.
 
 A boot rom is not provided, the state of the Game Boy after the boot rom finishes is emulated.
 
 Serial (link cable) is emulated in so far that games that rely on it do work, though no emulation of actual linking between two Game Boys is implemented.
 
-**Supported Memory Bank Controllers:** 
+**Supported Memory Bank Controllers:**
+
 - **MBC0**
 - **MBC1**
+- **MBC2**
+- **MBC3** (without RTC)
 - **MBC5**
 
 ## Controls:

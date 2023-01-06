@@ -62,7 +62,7 @@ impl App for Kevboy {
                 ui.menu_button("File", |ui| {
                     if ui.button("Open ROM").clicked() {
                         let file = rfd::FileDialog::new()
-                            .add_filter("Gameboy ROM", &["gb", "bin"])
+                            .add_filter("Gameboy ROM", &["gb", "bin", "gbc"])
                             .pick_file();
 
                         if let Some(path) = file {
