@@ -226,7 +226,7 @@ impl PPU {
     }
 
     fn get_bg_win_line(&self, vram: &[u8]) -> Vec<Color32> {
-        let mut current_line: Vec<Color32> = Vec::new();
+        let mut current_line: Vec<Color32> = Vec::with_capacity(256);
 
         // bg enable
         if self.regs.is_bg_enabled() {
