@@ -1,9 +1,12 @@
-use std::fs;
+use std::{
+    fs::{self, File},
+    io::Write,
+};
 
 use eframe::{
     egui::{
-        menu, CentralPanel, CollapsingHeader, Context, RichText, TextEdit, TextStyle,
-        TopBottomPanel, Window,
+        menu, Button, CentralPanel, CollapsingHeader, Context, Key, KeyboardShortcut, Modifiers,
+        RichText, TextEdit, TextStyle, TextureOptions, TopBottomPanel, Window,
     },
     epaint::{Color32, ColorImage},
     App,
@@ -51,7 +54,7 @@ impl App for Kevboy {
             "frame",
             ColorImage::from_rgba_unmultiplied([LCD_WIDTH, LCD_HEIGHT], &self.frame_buffer),
         )
-        .with_texture_filter(eframe::egui::TextureFilter::Nearest);
+        .with_options(TextureOptions::NEAREST);
 
         // ----------------------------------
         //      Start of UI declarations
@@ -67,12 +70,68 @@ impl App for Kevboy {
 
                         if let Some(path) = file {
                             let rom = fs::read(path).expect("ROM wasn't loaded correctly!");
-
                             self.emulator.load_rom(&rom);
                             self.mem_viewer = MemoryViewer::new_with_memory(&rom, true);
                         }
 
                         ui.close_menu();
+                    }
+
+                    ui.separator();
+
+                    // Load save file
+                    if ui
+                        .add_enabled(
+                            !self.emulator.rom.is_empty(),
+                            Button::new("Load Save").shortcut_text(
+                                ctx.format_shortcut(&KeyboardShortcut::new(
+                                    Modifiers::CTRL,
+                                    Key::L,
+                                )),
+                            ),
+                        )
+                        .clicked()
+                    {
+                        let file = rfd::FileDialog::new()
+                            .add_filter("Save file", &["sav"])
+                            .pick_file();
+
+                        if let Some(path) = file {
+                            let save_file = fs::read(path).expect("Save file wasn't loaded correctly!");
+
+                            // restart ROM so that the save can be applied before it's too late
+                            self.emulator.load_rom(&self.emulator.rom.clone());
+                            self.emulator.bus.cartridge.load_sram(&save_file);
+                        }
+                    }
+
+                    // Store save file
+                    if ui
+                        .add_enabled(
+                            !self.emulator.rom.is_empty(),
+                            Button::new("Store Save").shortcut_text(
+                                ctx.format_shortcut(&KeyboardShortcut::new(
+                                    Modifiers::CTRL,
+                                    Key::S,
+                                )),
+                            ),
+                        )
+                        .clicked()
+                    {
+                        let file = rfd::FileDialog::new().add_filter("Save file", &["sav"]).save_file();
+                        let sram = self.emulator.bus.cartridge.dump_sram();
+
+                        if let Some(f) = file {
+                            let save_file = File::create(f);
+                            if let Ok(mut sf) = save_file {
+                                if sram.is_some() {
+                                    sf.write_all(&sram.unwrap()).unwrap();
+                                } else {
+                                    rfd::MessageDialog::new().set_title("No saving was done!")
+                                        .set_description("Nothing was saved as this cartridge does not support external RAM.").show();
+                                }
+                            }
+                        }
                     }
                 });
 

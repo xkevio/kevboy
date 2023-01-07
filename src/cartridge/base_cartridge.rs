@@ -28,6 +28,46 @@ impl Cartridge {
             title: title.to_string(),
         }
     }
+
+    /// Loads in a `.sav` file and puts its contents
+    /// into cartridge RAM
+    pub fn load_sram(&mut self, save: &[u8]) {
+        match &mut self.cartridge_type {
+            CartridgeType::MBC1(mbc1) => {
+                for (i, bank) in save.chunks(0x2000).enumerate() {
+                    mbc1.external_ram[i] = bank.try_into().unwrap();
+                }
+            }
+            CartridgeType::MBC2(mbc2) => {
+                mbc2.built_in_ram = save.try_into().unwrap();
+            }
+            CartridgeType::MBC3(mbc3) => {
+                for (i, bank) in save.chunks(0x2000).enumerate() {
+                    mbc3.external_ram[i] = bank.try_into().unwrap();
+                }
+            }
+            CartridgeType::MBC5(mbc5) => {
+                for (i, bank) in save.chunks(0x2000).enumerate() {
+                    mbc5.external_ram[i] = bank.try_into().unwrap();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Dumps all of SRAM into a Vec of bytes by joining
+    /// the banks together.
+    ///
+    /// Returns `None` if no cartridge RAM is present.
+    pub fn dump_sram(&self) -> Option<Vec<u8>> {
+        match &self.cartridge_type {
+            CartridgeType::MBC1(mbc1) => Some(mbc1.external_ram.concat()),
+            CartridgeType::MBC2(mbc2) => Some(mbc2.built_in_ram.to_vec()),
+            CartridgeType::MBC3(mbc3) => Some(mbc3.external_ram.concat()),
+            CartridgeType::MBC5(mbc5) => Some(mbc5.external_ram.concat()),
+            _ => None,
+        }
+    }
 }
 
 impl Default for Cartridge {
