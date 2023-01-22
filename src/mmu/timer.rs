@@ -8,6 +8,7 @@ pub struct Timers {
 
     pub irq: bool,
     and_result_falling_edge: bool,
+    reload: bool,
 }
 
 impl MMIO for Timers {
@@ -24,9 +25,33 @@ impl MMIO for Timers {
     fn write(&mut self, address: u16, value: u8) {
         match address {
             0xFF04 => self.div = 0,
-            0xFF05 => self.tima = value,
-            0xFF06 => self.tma = value,
-            0xFF07 => self.tac = value,
+            0xFF05 => {
+                // during the cycle before the reload,
+                // cancel irq if TIMA gets written to
+                if self.irq && self.tima == 0 {
+                    self.irq = false;
+                    self.reload = false;
+                }
+
+                if !self.reload {
+                    self.tima = value;
+                }
+            }
+            0xFF06 => {
+                if self.reload {
+                    self.tima = value;
+                }
+
+                self.tma = value;
+            }
+            0xFF07 => {
+                // let prev_enable = self.is_timer_enabled();
+                self.tac = value | 0b1111_1000;
+
+                // if prev_enable && !self.is_timer_enabled() {
+                //     self.tick_tima();
+                // }
+            }
             _ => unreachable!("Unreachable timer register write"),
         }
     }
@@ -42,10 +67,15 @@ impl Timers {
 
             irq: false,
             and_result_falling_edge: false,
+            reload: false,
         }
     }
 
+    /// Ticks the timer by advancing DIV and TIMA,
+    /// also updates internal falling edge.
     pub fn tick(&mut self, cycles_tima: u16) {
+        self.reload = false;
+
         // increase each clock (t-cycle)
         for _ in 0..(cycles_tima * 4) {
             self.tick_div();
@@ -53,6 +83,15 @@ impl Timers {
 
             self.and_result_falling_edge = self.get_timer_falling_edge();
         }
+    }
+
+    /// Reloads TIMA when overflow by writing TMA into TIMA
+    ///
+    /// Sets internal reload bool to true for detection of TIMA write reloading.
+    pub fn reload_tima(&mut self) {
+        self.tima = self.tma;
+        self.irq = false;
+        self.reload = true;
     }
 
     /// Get bit of DIV in position specified by the lower 2 bits of the TAC register
@@ -68,11 +107,11 @@ impl Timers {
 
     /// Upper bits increase every 64 m-cycles
     fn tick_div(&mut self) {
-        self.div += 1;
+        self.div = self.div.wrapping_add(1);
     }
 
     /// Increased at frequency specified by TAC
-    /// TODO: tima and tma write while reload
+    /// TODO: rapid_toggle
     fn tick_tima(&mut self) {
         if !self.irq {
             // check for falling edge of "AND Result" -- bit of DIV & timer enable bit -- only then increase TIMA

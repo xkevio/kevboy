@@ -53,7 +53,7 @@ impl Emulator {
             .or_else(|_| std::str::from_utf8(&rom[0x0134..=0x013E]))
             .unwrap();
         println!("{title}");
-        println!("{:#06X}", rom[0x0147]);
+        println!("MBC: {:#06X}", rom[0x0147]);
 
         self.bus.cartridge = Cartridge::new(cartridge_type, title);
         self.rom = rom.to_vec(); // TODO: redundant?

@@ -33,7 +33,7 @@ impl MMIO for Serial {
     fn write(&mut self, address: u16, value: u8) {
         match address {
             0xFF01 => self.sb = value,
-            0xFF02 => self.sc = value,
+            0xFF02 => self.sc = value | 0b0111_1110,
             _ => unreachable!(),
         }
     }

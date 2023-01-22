@@ -9,29 +9,51 @@ use crate::{
 pub const LCD_WIDTH: usize = 160;
 pub const LCD_HEIGHT: usize = 144;
 
+const MODE3_START: i16 = 80;
+const HBLANK_START: i16 = 252;
+const LINE_END: i16 = 455;
+
 #[derive(PartialEq, Clone, Copy, Debug)]
-enum Mode {
+pub enum Mode {
     HBlank = 0,
     VBlank = 0b1,
     Mode2 = 0b10,
     Mode3 = 0b11,
 }
 
+#[derive(PartialEq, Clone, Copy, Debug)]
+pub enum DMATransferState {
+    Pending,
+    Transferring,
+    Disabled,
+}
+
 #[allow(clippy::upper_case_acronyms)]
 pub struct PPU {
-    // LCD screen array, current viewport
+    /// LCD screen array, current viewport
     pub frame_buffer: [Color32; LCD_WIDTH * LCD_HEIGHT],
+
+    /// Raw 256x256 background for debugging purposes
+    pub raw_frame: Vec<Color32>,
+
+    /// Contains pixels for the current line
     current_line: Vec<Color32>,
+    /// Contains up to 10 sprites that will be rendered this line
+    current_sprites: Vec<Sprite>,
 
+    /// All PPU registers needed for DMG, MMIO
     regs: PPURegisters,
-    cycles_passed: i16, // i16 so i can set it to -1
+    /// Current dot the PPU is, at relative to beginning of a line
+    dots: i16,
 
+    /// Current mode, based on bits 1-0 of STAT
     current_mode: Mode,
+    /// Stores previous STAT line to detect rising edge
     stat_block: bool,
-    dma_pending: bool,
+    /// Current DMA state to properly delay DMA transfer one m-cycle
+    dma_state: DMATransferState,
 
     internal_window_line: u8,
-    current_sprites: Vec<Sprite>,
 }
 
 impl MMIO for PPU {
@@ -53,23 +75,59 @@ impl MMIO for PPU {
         }
     }
 
-    fn write(&mut self, address: u16, value: u8) {
+    fn write(&mut self, _address: u16, _value: u8) {
+        unimplemented!()
+    }
+
+    fn write_with_callback(&mut self, address: u16, value: u8, cb: &mut InterruptHandler) {
         match address {
             0xFF40 => {
                 self.regs.lcdc = value;
 
                 if value & 0x80 == 0 {
                     self.turn_lcd_off();
+                } else {
+                    // LY=LYC comparison clock starts again after LCD is enabled,
+                    // this passes the stat_lyc_on_off test.
+                    if self.regs.ly_lyc() {
+                        self.regs.stat |= 0b100;
+                    } else {
+                        self.regs.stat &= !(0b100);
+                    }
+
+                    if self.check_stat_interrupt() {
+                        cb.request_interrupt(Interrupt::STAT);
+                    }
                 }
             }
-            0xFF41 => self.regs.stat = ((1 << 7) | value) | (self.regs.stat & 0b11),
+            0xFF41 => {
+                self.regs.stat = (1 << 7) | (value & !(0b111)) | (self.regs.stat & 0b111);
+
+                if self.check_stat_interrupt() {
+                    cb.request_interrupt(Interrupt::STAT);
+                }
+            }
             0xFF42 => self.regs.scy = value,
             0xFF43 => self.regs.scx = value,
-            0xFF44 => self.regs.ly = value,
-            0xFF45 => self.regs.lyc = value,
+            0xFF44 => {} // LY should be read-only from Bus
+            0xFF45 => {
+                self.regs.lyc = value;
+
+                if self.regs.is_lcd_on() {
+                    if self.regs.ly_lyc() {
+                        self.regs.stat |= 0b100;
+                    } else {
+                        self.regs.stat &= !(0b100);
+                    }
+                }
+
+                if self.check_stat_interrupt() {
+                    cb.request_interrupt(Interrupt::STAT);
+                }
+            }
             0xFF46 => {
                 self.regs.dma = value;
-                self.dma_pending = true;
+                self.dma_state = DMATransferState::Pending;
             }
             0xFF47 => self.regs.bgp = value,
             0xFF48 => self.regs.opb0 = value,
@@ -85,51 +143,120 @@ impl PPU {
     pub fn new() -> Self {
         Self {
             frame_buffer: [LCD_WHITE; LCD_WIDTH * LCD_HEIGHT],
+            raw_frame: vec![LCD_WHITE; 256 * 256],
+
             current_line: Vec::new(),
+            current_sprites: Vec::new(),
 
             regs: PPURegisters::default(),
-            cycles_passed: 0,
+            dots: 0,
 
             current_mode: Mode::HBlank,
             stat_block: false,
-            dma_pending: false,
+            dma_state: DMATransferState::Disabled,
 
             internal_window_line: 0,
-            current_sprites: Vec::new(),
         }
     }
 
-    // should tick 4 times per m-cycle
-    // 456 clocks per scanline
+    // Should tick 4 times per m-cycle
+    // 456 clocks per scanline (see lengths below)
     // 80 (Mode2) - 172 (Mode3) - 204 (HBlank) - VBlank
     pub fn tick(&mut self, vram: &[u8], oam: &[u8], interrupt_handler: &mut InterruptHandler) {
         if self.regs.is_lcd_on() {
-            if self.regs.ly_lyc() {
-                self.regs.stat |= 0b100;
-            } else {
-                self.regs.stat &= !(0b100);
-            }
-
-            // ly=lyc check happens on the 4th cycle of the line
-            if self.cycles_passed == 4 && self.check_stat_interrupt() {
-                interrupt_handler.request_interrupt(Interrupt::STAT);
-            }
-
-            if self.regs.ly < 144 {
-                self.handle_line0_to_line143(vram, oam, interrupt_handler);
-            } else {
-                if self.cycles_passed >= 456 {
-                    self.regs.ly += 1;
-
-                    if self.regs.ly > 153 {
-                        self.regs.ly = 0;
+            // LY = 0 after lcd turn on: special behavior
+            match &self.current_mode {
+                Mode::Mode2 => {
+                    if self.dots >= MODE3_START {
+                        self.change_mode(Mode::Mode3, interrupt_handler);
                     }
 
-                    self.cycles_passed = -1;
+                    // Scan OAM for (up to) 10 sprites
+                    if self.dots == 0 {
+                        self.current_sprites = sprite::get_current_sprites_per_line(
+                            oam,
+                            self.regs.ly,
+                            self.regs.is_sprite_8x8(),
+                        );
+                    }
                 }
-            }
+                Mode::Mode3 => {
+                    // Get pixels of current line ("draw" at end of mode)
+                    if self.current_line.is_empty() {
+                        self.current_line = self.get_current_line(vram);
+                    }
 
-            self.cycles_passed += 1;
+                    if self.dots >= HBLANK_START {
+                        if self.regs.is_window_visible()
+                            && self.regs.ly >= self.regs.wy
+                            && self.regs.is_window_enabled()
+                        {
+                            self.internal_window_line += 1;
+                        }
+
+                        self.draw_current_line(); // -> side effect: clears self.current_line and self.current_sprites
+                        self.change_mode(Mode::HBlank, interrupt_handler);
+                    }
+                }
+                Mode::HBlank => {
+                    if self.dots >= LINE_END {
+                        self.regs.ly += 1;
+
+                        // Check STAT irq for LY change
+                        if self.regs.ly_lyc() {
+                            self.regs.stat |= 0b100;
+                        } else {
+                            self.regs.stat &= !(0b100);
+                        }
+
+                        if self.check_stat_interrupt() {
+                            interrupt_handler.request_interrupt(Interrupt::STAT);
+                        }
+
+                        if self.regs.ly >= 144 {
+                            self.change_mode(Mode::VBlank, interrupt_handler);
+                            self.internal_window_line = 0;
+                        } else {
+                            self.change_mode(Mode::Mode2, interrupt_handler);
+                        }
+
+                        self.dots = -1;
+                    }
+                }
+                Mode::VBlank => {
+                    if self.dots >= LINE_END {
+                        self.regs.ly += 1;
+
+                        if self.regs.ly_lyc() {
+                            self.regs.stat |= 0b100;
+                        } else {
+                            self.regs.stat &= !(0b100);
+                        }
+
+                        if self.check_stat_interrupt() {
+                            interrupt_handler.request_interrupt(Interrupt::STAT);
+                        }
+
+                        // TODO: 1 m-cycle after ly is set to 153, it is set to 0 NOT immediately
+                        if self.regs.ly >= 153 {
+                            self.regs.ly = 0;
+
+                            if self.regs.ly_lyc() {
+                                self.regs.stat |= 0b100;
+                            } else {
+                                self.regs.stat &= !(0b100);
+                            }
+
+                            self.change_mode(Mode::Mode2, interrupt_handler);
+                            self.dump_bg_map(vram);
+                        }
+
+                        self.dots = -1;
+                    }
+                }
+            };
+
+            self.dots += 1;
         }
     }
 
@@ -137,12 +264,16 @@ impl PPU {
     //          DMA
     // --------------------------
 
-    pub fn is_dma_pending(&self) -> bool {
-        self.dma_pending
+    pub fn get_dma_state(&self) -> DMATransferState {
+        self.dma_state
+    }
+
+    pub fn set_dma_enable(&mut self) {
+        self.dma_state = DMATransferState::Transferring;
     }
 
     pub fn reset_dma(&mut self) {
-        self.dma_pending = false;
+        self.dma_state = DMATransferState::Disabled;
     }
 
     // --------------------------
@@ -151,72 +282,46 @@ impl PPU {
         self.regs.ly = 0;
         self.internal_window_line = 0;
 
-        self.cycles_passed = 0;
-        self.stat_block = false;
-
-        self.change_mode(Mode::HBlank, None);
-    }
-
-    /// State machine that handles all lines and modes before VBlank
-    fn handle_line0_to_line143(
-        &mut self,
-        vram: &[u8],
-        oam: &[u8],
-        interrupt_handler: &mut InterruptHandler,
-    ) {
-        match self.cycles_passed {
-            0 => {
-                self.change_mode(Mode::Mode2, Some(interrupt_handler));
-
-                // scan oam for sprites
-                self.current_sprites = sprite::get_current_sprites_per_line(
-                    oam,
-                    self.regs.ly,
-                    self.regs.is_sprite_8x8(),
-                );
-            }
-            80 => {
-                self.change_mode(Mode::Mode3, Some(interrupt_handler));
-
-                // "draw" pixels into current line
-                if self.current_line.is_empty() {
-                    self.current_line = self.get_current_line(vram);
-                }
-            }
-            252 => {
-                // check at end of mode 3 technically
-                if self.regs.is_window_visible()
-                    && self.regs.ly >= self.regs.wy
-                    && self.regs.is_window_enabled()
-                {
-                    self.internal_window_line += 1;
-                }
-
-                self.change_mode(Mode::HBlank, Some(interrupt_handler));
-
-                // add line to buffer
-                self.draw_current_line();
-            }
-            456 => {
-                self.regs.ly += 1;
-                self.stat_block = false;
-
-                if self.regs.ly == 144 {
-                    self.change_mode(Mode::VBlank, Some(interrupt_handler));
-                    self.internal_window_line = 0;
-                } else {
-                    self.change_mode(Mode::Mode2, Some(interrupt_handler));
-                }
-
-                self.cycles_passed = -1;
-            }
-            _ => {}
-        }
+        self.dots = 0;
+        self.regs.stat &= !(0b11);
+        self.current_mode = Mode::HBlank;
     }
 
     // -------------------------
     // Rendering logic (bg & win)
     // -------------------------
+
+    // -------- DEBUGGING STUFF --------
+
+    /// Dumps 256x256 BG map for the vram viewer
+    fn dump_bg_map(&mut self, vram: &[u8]) {
+        let mut current_line: Vec<Color32> = Vec::with_capacity(256);
+
+        for i in 0..=255 {
+            let unsigned_addressing = self.regs.lcdc & 0b10000 != 0;
+
+            let bg_tile_map_area = if self.regs.lcdc & 0b1000 == 0 {
+                0x9800 - 0x8000
+            } else {
+                0x9C00 - 0x8000
+            };
+
+            let adjusted_y = i;
+            let tile_map_start = bg_tile_map_area + (((adjusted_y / 8) as usize) * 0x20);
+
+            for index in tile_map_start..=(tile_map_start + 0x1F) {
+                let tile_row = self.get_tile_row(vram, unsigned_addressing, index, adjusted_y);
+                current_line.extend(tile_row);
+            }
+
+            for x in 0..256 {
+                self.raw_frame[i as usize * 256 + x] = current_line[x];
+            }
+            current_line.clear();
+        }
+    }
+
+    // -------- ACTUAL RENDERING --------
 
     fn get_current_line(&self, vram: &[u8]) -> Vec<Color32> {
         let bg_win_line = self.get_bg_win_line(vram);
@@ -228,7 +333,6 @@ impl PPU {
     fn get_bg_win_line(&self, vram: &[u8]) -> Vec<Color32> {
         let mut current_line: Vec<Color32> = Vec::with_capacity(256);
 
-        // bg enable
         if self.regs.is_bg_enabled() {
             let unsigned_addressing = self.regs.lcdc & 0b10000 != 0;
 
@@ -246,7 +350,7 @@ impl PPU {
                 current_line.extend(tile_row);
             }
 
-            // Apply SCX to the background layer
+            // Apply SCX to the current scanline in the background layer
             current_line.rotate_left(self.regs.scx as usize);
 
             // Draw window over bg if enabled and visible
@@ -277,7 +381,7 @@ impl PPU {
 
         // Fill current_line when empty aka when bg / window were disabled
         if current_line.is_empty() {
-            current_line = vec![LCD_WHITE; LCD_WIDTH];
+            current_line = vec![LCD_WHITE; 256];
         }
 
         current_line
@@ -287,7 +391,6 @@ impl PPU {
     // Sprites
     // -------------------------
 
-    // refactor?
     fn get_sprite_line(&self, vram: &[u8], current_line: &[Color32]) -> Vec<Color32> {
         let mut current_line: Vec<Color32> = Vec::from(current_line);
 
@@ -431,34 +534,35 @@ impl PPU {
         self.current_sprites.clear();
     }
 
-    // -------------------------
+    // ----------------------------
     // PPU STAT irq and mode change
-    // -------------------------
+    // ----------------------------
 
-    // TODO: interrupt handler parameter
-    fn change_mode(&mut self, to: Mode, interrupt_handler: Option<&mut InterruptHandler>) {
+    fn change_mode(&mut self, to: Mode, interrupt_handler: &mut InterruptHandler) {
         match to {
-            Mode::HBlank => self.regs.stat &= !(0b11),
-            _ => {
-                if to == Mode::VBlank {
-                    let interrupt_handler = interrupt_handler.unwrap();
-                    interrupt_handler.request_interrupt(Interrupt::VBlank);
-                }
-                self.regs.stat |= to as u8
-            }
-        }
+            Mode::VBlank => interrupt_handler.request_interrupt(Interrupt::VBlank),
+            _ if to == self.current_mode => return,
+            _ => {}
+        };
 
+        self.regs.stat &= !(0b11);
+        self.regs.stat |= to as u8;
         self.current_mode = to;
+
+        if self.check_stat_interrupt() {
+            interrupt_handler.request_interrupt(Interrupt::STAT);
+        }
     }
 
     fn check_stat_interrupt(&mut self) -> bool {
         let prev_stat = self.stat_block;
-        let current_stat = (self.regs.ly_lyc() && self.regs.stat & 0b1000000 != 0)
-            || (self.current_mode == Mode::HBlank && self.regs.stat & 0b1000 != 0)
-            || (self.current_mode == Mode::Mode2 && self.regs.stat & 0b100000 != 0)
-            || (self.current_mode == Mode::VBlank && self.regs.stat & 0b10000 != 0);
+        let current_stat = (self.regs.ly_lyc() && self.regs.stat & (1 << 6) != 0)
+            || ((self.current_mode == Mode::HBlank) && self.regs.stat & (1 << 3) != 0)
+            || ((self.current_mode == Mode::Mode2) && self.regs.stat & (1 << 5) != 0)
+            || ((self.current_mode == Mode::VBlank)
+                && ((self.regs.stat & (1 << 4) != 0) | (self.regs.stat & (1 << 5) != 0)));
 
         self.stat_block = current_stat;
-        prev_stat != current_stat && current_stat
+        !prev_stat && current_stat
     }
 }

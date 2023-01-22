@@ -3,9 +3,14 @@ name = "kevboy"
 version = "0.1.0"
 edition = "2021"
 
+[profile.release]
+strip = true
+
 [dependencies]
+anyhow = "1.0.68"
 eframe = "0.20.1"
 egui_extras = "0.20.0"
+image = "0.24.5"
 rfd = "0.10.0"
 
 [dev-dependencies]

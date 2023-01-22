@@ -25,11 +25,14 @@ use crate::ui::frame_history::FrameHistory;
 pub struct Kevboy {
     emulator: Emulator,
     frame_buffer: Vec<u8>,
+    raw_fb: Vec<u8>,
 
     // To count and calculate frames per second, smoothed
     history: FrameHistory,
     mem_viewer: MemoryViewer,
+
     is_memory_viewer_open: bool,
+    is_vram_window_open: bool,
 }
 
 impl Default for Kevboy {
@@ -37,10 +40,13 @@ impl Default for Kevboy {
         Self {
             emulator: Emulator::new(),
             frame_buffer: [127, 134, 15, 255].repeat(LCD_WIDTH * LCD_HEIGHT),
+            raw_fb: [127, 134, 15, 255].repeat(256 * 256),
 
             history: FrameHistory::default(),
             mem_viewer: MemoryViewer::new(),
+
             is_memory_viewer_open: false,
+            is_vram_window_open: false,
         }
     }
 }
@@ -124,8 +130,8 @@ impl App for Kevboy {
                         if let Some(f) = file {
                             let save_file = File::create(f);
                             if let Ok(mut sf) = save_file {
-                                if sram.is_some() {
-                                    sf.write_all(&sram.unwrap()).unwrap();
+                                if let Some(sram) = sram {
+                                    sf.write_all(&sram).unwrap();
                                 } else {
                                     rfd::MessageDialog::new().set_title("No saving was done!")
                                         .set_description("Nothing was saved as this cartridge does not support external RAM.").show();
@@ -135,11 +141,18 @@ impl App for Kevboy {
                     }
                 });
 
-                ui.menu_button("Options", |_ui| {});
+                ui.menu_button("Options", |ui| {
+                    ui.add(Button::new("Controls"));
+                    ui.add(Button::new("Palettes"));
+                });
 
                 ui.menu_button("Debug", |ui| {
                     if ui.button("Show memory (hex)").clicked() {
                         self.is_memory_viewer_open = !self.is_memory_viewer_open;
+                    }
+                    if ui.button("Open VRAM viewer").clicked() {
+                        self.is_vram_window_open = !self.is_vram_window_open;
+
                     }
                 });
             });
@@ -230,6 +243,21 @@ impl App for Kevboy {
                 });
         }
 
+        if self.is_vram_window_open {
+            Window::new("BG Map")
+                .open(&mut self.is_vram_window_open)
+                .show(ctx, |ui| {
+                    let image = RetainedImage::from_color_image(
+                        "vram",
+                        ColorImage::from_rgba_unmultiplied([256, 256], &self.raw_fb),
+                    )
+                    .with_options(TextureOptions::NEAREST);
+
+                    // image.show_scaled(ui, 3.0);
+                    image.show_size(ui, ui.available_size());
+                });
+        }
+
         // ----------------------------------
         //      End of UI declarations
         // ----------------------------------
@@ -242,14 +270,28 @@ impl App for Kevboy {
 }
 
 impl Kevboy {
+    pub fn new(rom: &[u8]) -> Self {
+        let mut emulator = Emulator::new();
+        emulator.load_rom(rom);
+
+        Self {
+            emulator,
+            mem_viewer: MemoryViewer::new_with_memory(rom, true),
+            ..Default::default()
+        }
+    }
+
     fn run(&mut self, ctx: &Context) {
         while self.emulator.cycle_count < 17_556 {
             self.emulator
                 .bus
                 .joypad
                 .tick(ctx, &mut self.emulator.bus.interrupt_handler);
+
             self.emulator.cycle_count += self.emulator.step() as u16;
         }
+
+        // FIXME: screen tearing
 
         let buf = self
             .emulator
@@ -260,7 +302,18 @@ impl Kevboy {
             .flat_map(|c| c.to_array())
             .collect();
 
+        let rbuf = self
+            .emulator
+            .bus
+            .ppu
+            .raw_frame
+            .iter()
+            .flat_map(|c| c.to_array())
+            .collect();
+
         self.frame_buffer = buf;
+        self.raw_fb = rbuf;
+
         self.emulator.cycle_count = 0;
         self.emulator.bus.joypad.reset_pressed_keys();
     }

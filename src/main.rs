@@ -1,7 +1,12 @@
-#![allow(dead_code)] // TODO
+#![allow(dead_code)]
+// #![windows_subsystem = "windows"]
 
+use anyhow::Result;
+use eframe::IconData;
+use image::{codecs::png::PngDecoder, DynamicImage};
 use ui::ui::Kevboy;
 
+mod apu;
 mod cartridge;
 mod cpu;
 mod emulator;
@@ -10,14 +15,26 @@ mod mmu;
 mod ppu;
 mod ui;
 
-fn main() {
-    // use native vsync for "sync to video" to keep gameboy at 60fps (technically 59.73)
-    // will only work on 60Hz displays for now
-    let native_options = eframe::NativeOptions::default();
+fn main() -> Result<()> {
+    // Use native vsync for "sync to video" to keep gameboy at 60fps (technically 59.73)
+    // Will only work on 60Hz displays for now
+    let mut native_options = eframe::NativeOptions::default();
 
-    eframe::run_native(
-        "Kevboy",
-        native_options,
-        Box::new(|_| Box::new(Kevboy::default())),
-    );
+    let icon = include_bytes!("../icon/icon.png");
+    let icon_data = DynamicImage::from_decoder(PngDecoder::new(&icon[..])?)?;
+
+    native_options.icon_data = Some(IconData {
+        rgba: icon_data.as_bytes().to_vec(),
+        width: 256,
+        height: 256,
+    });
+
+    // Read in rom per command line
+    let kevboy = match std::env::args().nth(1) {
+        Some(rom) => Kevboy::new(&std::fs::read(rom)?),
+        None => Kevboy::default(),
+    };
+
+    eframe::run_native("Kevboy", native_options, Box::new(|_| Box::new(kevboy)));
+    Ok(())
 }

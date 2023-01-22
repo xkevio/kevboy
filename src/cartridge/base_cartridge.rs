@@ -29,6 +29,7 @@ impl Cartridge {
         }
     }
 
+    // TODO: create per_cartridge! macro to avoid repetition
     /// Loads in a `.sav` file and puts its contents
     /// into cartridge RAM
     pub fn load_sram(&mut self, save: &[u8]) {

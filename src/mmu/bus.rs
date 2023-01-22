@@ -1,12 +1,11 @@
 use crate::{
+    apu::apu::APU,
     cartridge::base_cartridge::Cartridge,
     cpu::interrupts::{Interrupt, InterruptHandler},
     input::joypad::Joypad,
-    mmu::{mmio::MMIO, timer::Timers},
-    ppu::ppu::PPU,
+    mmu::{mmio::MMIO, serial::Serial, timer::Timers},
+    ppu::ppu::{DMATransferState, PPU},
 };
-
-use super::serial::Serial;
 
 pub struct Bus {
     pub cartridge: Cartridge,
@@ -18,7 +17,9 @@ pub struct Bus {
     pub joypad: Joypad,
     pub serial: Serial,
     pub timer: Timers,
-    pub ppu: PPU, // lcdc, stat, scx, scy,...
+    pub ppu: PPU,
+
+    pub apu: APU,
 
     pub hram: [u8; 0xAF],
     pub interrupt_handler: InterruptHandler,
@@ -32,7 +33,9 @@ pub struct Bus {
 
 impl MMIO for Bus {
     fn read(&mut self, address: u16) -> u8 {
-        self.tick(1);
+        if self.ppu.get_dma_state() != DMATransferState::Transferring {
+            self.tick(1);
+        }
 
         match address {
             0x0000..=0x7FFF => self.cartridge.read(address),
@@ -41,26 +44,25 @@ impl MMIO for Bus {
             0xC000..=0xFDFF => self.wram[address as usize & 0x1FFF],
             0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00],
             0xFEA0..=0xFEFF => 0xFF, // usage of this area not prohibited, may trigger oam corruption
-            0xFF00..=0xFF7F => {
-                match address {
-                    0xFF00 => self.joypad.read(address),
-                    0xFF01 | 0xFF02 => self.serial.read(address),
-                    0xFF04..=0xFF07 => self.timer.read(address),
-                    0xFF0F => self.interrupt_handler.intf,
-                    // audio
-                    0xFF24 => 0x00, // pokemon audio workaround
-                    0xFF40..=0xFF4B => self.ppu.read(address),
-                    0xFF50 => self.disable_boot_rom,
-                    _ => 0xFF,
-                }
-            }
+            0xFF00..=0xFF7F => match address {
+                0xFF00 => self.joypad.read(address),
+                0xFF01 | 0xFF02 => self.serial.read(address),
+                0xFF04..=0xFF07 => self.timer.read(address),
+                0xFF0F => self.interrupt_handler.intf,
+                0xFF10..=0xFF26 => self.apu.read(address),
+                0xFF40..=0xFF4B => self.ppu.read(address),
+                0xFF50 => self.disable_boot_rom,
+                _ => 0xFF,
+            },
             0xFF80..=0xFFFE => self.hram[address as usize - 0xFF80],
             0xFFFF => self.interrupt_handler.inte,
         }
     }
 
     fn write(&mut self, address: u16, value: u8) {
-        self.tick(1);
+        if self.ppu.get_dma_state() != DMATransferState::Transferring {
+            self.tick(1);
+        }
 
         match address {
             0x0000..=0x7FFF => self.cartridge.write(address, value),
@@ -69,18 +71,18 @@ impl MMIO for Bus {
             0xC000..=0xFDFF => self.wram[address as usize & 0x1FFF] = value,
             0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00] = value,
             0xFEA0..=0xFEFF => {} // not usable area
-            0xFF00..=0xFF7F => {
-                match address {
-                    0xFF00 => self.joypad.write(address, value),
-                    0xFF01 | 0xFF02 => self.serial.write(address, value),
-                    0xFF04..=0xFF07 => self.timer.write(address, value),
-                    // audio
-                    0xFF0F => self.interrupt_handler.intf = value,
-                    0xFF40..=0xFF4B => self.ppu.write(address, value),
-                    0xFF50 => self.disable_boot_rom = value,
-                    _ => {}
+            0xFF00..=0xFF7F => match address {
+                0xFF00 => self.joypad.write(address, value),
+                0xFF01 | 0xFF02 => self.serial.write(address, value),
+                0xFF04..=0xFF07 => self.timer.write(address, value),
+                0xFF0F => self.interrupt_handler.intf = value | 0b1110_0000,
+                0xFF10..=0xFF26 => self.apu.write(address, value),
+                0xFF40..=0xFF4B => {
+                    self.ppu
+                        .write_with_callback(address, value, &mut self.interrupt_handler)
                 }
-            }
+                _ => {}
+            },
             0xFF80..=0xFFFE => self.hram[address as usize - 0xFF80] = value,
             0xFFFF => self.interrupt_handler.inte = value,
         }
@@ -105,20 +107,27 @@ impl Bus {
             timer: Timers::new(),
             ppu: PPU::new(),
 
+            apu: APU::default(),
+
             hram: [0xFF; 0xAF],
             interrupt_handler: InterruptHandler::default(),
-            disable_boot_rom: 0x01,
+            disable_boot_rom: 0xFF, // not writable once unmapped
         }
     }
 
+    /// Ticks the bus in M-Cycles. Called every mem read/write
+    /// and for extra cycles in certain instructions.
+    ///
+    /// Advances timer, serial and PPU for now.
     pub fn tick(&mut self, cycles_passed: u16) {
-        if self.timer.irq {
-            self.timer.irq = false;
-            self.timer.tima = self.timer.tma;
+        let prev_tima = self.timer.tima;
+        self.timer.tick(cycles_passed);
+
+        if self.timer.irq && prev_tima == 0 {
+            self.timer.reload_tima();
             self.interrupt_handler.request_interrupt(Interrupt::Timer);
         }
 
-        self.timer.tick(cycles_passed);
         self.serial
             .tick(&mut self.interrupt_handler, cycles_passed, self.timer.div);
 
@@ -128,9 +137,11 @@ impl Bus {
                 .tick(&self.vram, &self.oam, &mut self.interrupt_handler);
         }
 
-        // TODO: dma is delayed one cycle -- write -> nothing -> DMA
-        if self.ppu.is_dma_pending() {
-            self.oam_dma_transfer();
+        // DMA is delayed one cycle -- write -> nothing -> DMA
+        match self.ppu.get_dma_state() {
+            DMATransferState::Pending => self.ppu.set_dma_enable(),
+            DMATransferState::Transferring => self.oam_dma_transfer(),
+            DMATransferState::Disabled => {}
         }
     }
 
@@ -152,10 +163,10 @@ impl Bus {
         let source_start = (self.ppu.read(0xFF46) as u16) * 0x100;
         let source_end = source_start + 0x9F;
 
-        self.ppu.reset_dma();
-
         for (dest_ind, addr) in (source_start..=source_end).enumerate() {
             self.oam[dest_ind] = self.read(addr);
         }
+
+        self.ppu.reset_dma();
     }
 }

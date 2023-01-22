@@ -77,12 +77,10 @@ impl MMIO for MBC3 {
                     if self.ram_bank_rtc <= 0x03 {
                         self.external_ram[(self.ram_bank_rtc & 0x03) as usize]
                             [(address - 0xA000) as usize]
+                    } else if self.ram_bank_rtc >= 0x08 && self.ram_bank_rtc <= 0x0C {
+                        self.rtc.read(self.ram_bank_rtc as u16)
                     } else {
-                        if self.ram_bank_rtc >= 0x08 && self.ram_bank_rtc <= 0x0C {
-                            self.rtc.read(self.ram_bank_rtc as u16)
-                        } else {
-                            0xFF
-                        }
+                        0xFF
                     }
                 } else {
                     0xFF

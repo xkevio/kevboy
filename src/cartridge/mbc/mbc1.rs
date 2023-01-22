@@ -55,7 +55,7 @@ impl MMIO for MBC1 {
                 self.rom[address as usize & (self.rom.len() - 1)]
             }
             0xA000..=0xBFFF => {
-                if self.ram_enable {
+                if self.ram_enable && self.ram_size > 0 {
                     if self.banking_mode == 0 || self.ram_size <= 8 {
                         self.external_ram[0][address as usize - 0xA000]
                     } else {
@@ -98,7 +98,7 @@ impl MMIO for MBC1 {
                 self.banking_mode = value & 0x1;
             }
             0xA000..=0xBFFF => {
-                if self.ram_enable {
+                if self.ram_enable && self.ram_size > 0 {
                     if self.banking_mode == 0 {
                         self.external_ram[0][address as usize - 0xA000] = value;
                     } else {

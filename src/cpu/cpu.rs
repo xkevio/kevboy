@@ -25,7 +25,10 @@ pub struct CPU {
     pub ime: bool,
     pub halt: bool,
     pub stopped: bool,
+
     ei: bool,
+    ime_req: bool,
+    halt_bug: bool,
 }
 
 impl CPU {
@@ -35,11 +38,14 @@ impl CPU {
             ime: false,
             halt: false,
             stopped: false,
+
             ei: false,
+            ime_req: false,
+            halt_bug: false,
         }
     }
 
-    // returns m-cycles for now
+    // Returns m-cycles
     #[rustfmt::skip]
     pub fn tick(&mut self, bus: &mut Bus) -> u8 {
         if self.halt {
@@ -47,13 +53,22 @@ impl CPU {
             return 1;
         }
 
-        // ei() is delayed by one instruction
+        // ei() is delayed by one instruction inbetween?
         if self.ei {
-            self.ime = true;
+            self.ime_req = true;
             self.ei = false;
         }
 
+        if self.ime_req {
+            self.ime = true;
+            self.ime_req = false;
+        }
+
         let opcode = self.fetch_operand(bus);
+        if self.halt_bug {
+            self.registers.PC -= 1;
+            self.halt_bug = false;
+        }
 
         if opcode == 0xCB {
             let cb_opcode = self.fetch_operand(bus);
@@ -582,8 +597,8 @@ impl CPU {
                 0xE8 => {
                     // wrapping_add, adding unsigned to signed
                     let value = self.fetch_operand(bus);
-                    bus.tick(1);
                     self.add_sp(value);
+                    bus.tick(1);
                     bus.tick(1);
 
                     4
@@ -646,13 +661,13 @@ impl CPU {
                 }
             }
 
-            false
+            return false;
         } else {
             if bus.interrupt_handler.inte & bus.interrupt_handler.intf & 0x1F != 0 {
                 self.halt = false;
             }
 
-            false
+            return false;
         }
     }
 
@@ -1021,7 +1036,6 @@ impl CPU {
         self.registers.set_flag(Flag::Substraction, false);
     }
 
-    // TODO: better half-carry for three components
     fn adc_a(&mut self, value: u8) {
         let carry_bit = self.registers.get_flag(Flag::Carry) as u8;
 
@@ -1388,12 +1402,10 @@ impl CPU {
             if ie & if_flag & 0x1F == 0 {
                 self.halt = true;
             }
+        } else if ie & if_flag & 0x1F == 0 {
+            self.halt = true;
         } else {
-            if ie & if_flag & 0x1F == 0 {
-                self.halt = true;
-            } else {
-                // TODO: halt bug
-            }
+            self.halt_bug = true;
         }
     }
 
