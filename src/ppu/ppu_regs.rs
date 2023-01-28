@@ -1,5 +1,4 @@
-use std::fmt::Debug;
-
+#[derive(Debug)]
 pub struct PPURegisters {
     pub lcdc: u8,
     pub stat: u8,
@@ -31,25 +30,6 @@ impl Default for PPURegisters {
             opb1: 0x00,
             dma: 0xFF,
         }
-    }
-}
-
-impl Debug for PPURegisters {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PPURegisters")
-            .field("lcdc", &format_args!("{:#04X}", &self.lcdc))
-            .field("stat", &format_args!("{:#04X}", &self.stat))
-            .field("scy", &format_args!("{:#04X}", &self.scy))
-            .field("scx", &format_args!("{:#04X}", &self.scx))
-            .field("ly", &format_args!("{:#04X}", &self.ly))
-            .field("lyc", &format_args!("{:#04X}", &self.lyc))
-            .field("wy", &format_args!("{:#04X}", &self.wy))
-            .field("wx", &format_args!("{:#04X}", &self.wx))
-            .field("bgp", &format_args!("{:#04X}", &self.bgp))
-            .field("opb0", &format_args!("{:#04X}", &self.opb0))
-            .field("opb1", &format_args!("{:#04X}", &self.opb1))
-            .field("dma", &format_args!("{:#04X}", &self.dma))
-            .finish()
     }
 }
 

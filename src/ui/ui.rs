@@ -291,18 +291,16 @@ impl Kevboy {
             self.emulator.cycle_count += self.emulator.step() as u16;
         }
 
-        // FIXME: screen tearing
-
-        let buf = self
+        self.frame_buffer = self
             .emulator
             .bus
             .ppu
-            .frame_buffer
+            .ui_frame_buffer
             .iter()
             .flat_map(|c| c.to_array())
             .collect();
 
-        let rbuf = self
+        self.raw_fb = self
             .emulator
             .bus
             .ppu
@@ -310,9 +308,6 @@ impl Kevboy {
             .iter()
             .flat_map(|c| c.to_array())
             .collect();
-
-        self.frame_buffer = buf;
-        self.raw_fb = rbuf;
 
         self.emulator.cycle_count = 0;
         self.emulator.bus.joypad.reset_pressed_keys();

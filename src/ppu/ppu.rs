@@ -30,8 +30,9 @@ pub enum DMATransferState {
 
 #[allow(clippy::upper_case_acronyms)]
 pub struct PPU {
-    /// LCD screen array, current viewport
-    pub frame_buffer: [Color32; LCD_WIDTH * LCD_HEIGHT],
+    /// LCD screen array, current viewport (double buffering)
+    pub frame_buffer: Box<[Color32; LCD_WIDTH * LCD_HEIGHT]>,
+    pub ui_frame_buffer: Box<[Color32; LCD_WIDTH * LCD_HEIGHT]>,
 
     /// Raw 256x256 background for debugging purposes
     pub raw_frame: Vec<Color32>,
@@ -142,7 +143,15 @@ impl MMIO for PPU {
 impl PPU {
     pub fn new() -> Self {
         Self {
-            frame_buffer: [LCD_WHITE; LCD_WIDTH * LCD_HEIGHT],
+            frame_buffer: vec![LCD_WHITE; LCD_WIDTH * LCD_HEIGHT]
+                .into_boxed_slice()
+                .try_into()
+                .unwrap(),
+            ui_frame_buffer: vec![LCD_WHITE; LCD_WIDTH * LCD_HEIGHT]
+                .into_boxed_slice()
+                .try_into()
+                .unwrap(),
+
             raw_frame: vec![LCD_WHITE; 256 * 256],
 
             current_line: Vec::new(),
@@ -216,6 +225,9 @@ impl PPU {
                         if self.regs.ly >= 144 {
                             self.change_mode(Mode::VBlank, interrupt_handler);
                             self.internal_window_line = 0;
+
+                            // Swap buffers to avoid screen tearing on VBlank
+                            std::mem::swap(&mut self.frame_buffer, &mut self.ui_frame_buffer);
                         } else {
                             self.change_mode(Mode::Mode2, interrupt_handler);
                         }
