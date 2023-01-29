@@ -383,8 +383,10 @@ impl PPU {
                     let tile_row = self.get_tile_row(vram, unsigned_addressing, index, win_y);
 
                     for i in 0..8 {
-                        if (((self.regs.wx - 7) as usize) + i + (j * 8)) < 256 {
-                            current_line[((self.regs.wx - 7) as usize) + i + (j * 8)] = tile_row[i];
+                        let signed_wx = self.regs.wx as i16;
+                        let win_index = (signed_wx - 7) + i as i16 + (j as i16 * 8);
+                        if win_index < 256 && win_index >= 0 {
+                            current_line[win_index as usize] = tile_row[i];
                         }
                     }
                 }
