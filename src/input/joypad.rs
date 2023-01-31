@@ -67,7 +67,7 @@ impl Joypad {
     fn handle_key_input(&mut self, ctx: &Context, keys: &[Key; 4]) {
         for (bit, key) in keys.iter().enumerate() {
             if ctx.input().key_down(*key) {
-                self.joyp &= !(0x1 * (2u8.pow(bit as u32)));
+                self.joyp &= !(0x1 << bit as u8);
             }
         }
     }
