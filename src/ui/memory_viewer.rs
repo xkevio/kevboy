@@ -4,6 +4,7 @@ use eframe::{
 };
 
 pub struct MemoryViewer {
+    pub open: bool,
     memory: Vec<u8>,
     show_ascii: bool,
 }
@@ -11,6 +12,7 @@ pub struct MemoryViewer {
 impl MemoryViewer {
     pub fn new() -> Self {
         Self {
+            open: false,
             memory: Vec::new(),
             show_ascii: false,
         }
@@ -18,6 +20,7 @@ impl MemoryViewer {
 
     pub fn new_with_memory(memory: &[u8], show_ascii: bool) -> Self {
         Self {
+            open: false,
             memory: memory.to_vec(),
             show_ascii,
         }

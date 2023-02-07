@@ -5,11 +5,12 @@ use std::{
 
 use eframe::{
     egui::{
-        menu, Button, CentralPanel, CollapsingHeader, Context, Key, KeyboardShortcut, Modifiers,
-        RichText, TextEdit, TextStyle, TextureOptions, TopBottomPanel, Window,
+        menu, Button, CentralPanel, CollapsingHeader, Context, Key,
+        KeyboardShortcut, Modifiers, RadioButton, RichText, TextEdit, TextureOptions,
+        TopBottomPanel, Window,
     },
     epaint::{Color32, ColorImage},
-    App,
+    App, Frame,
 };
 use egui_extras::RetainedImage;
 
@@ -20,18 +21,20 @@ use crate::{
     ui::memory_viewer::MemoryViewer,
 };
 
+use super::{control_panel::ControlPanel, palette_picker::PalettePicker};
 use crate::ui::frame_history::FrameHistory;
 
 pub struct Kevboy {
     emulator: Emulator,
+    history: FrameHistory,
+
     frame_buffer: Vec<u8>,
     raw_fb: Vec<u8>,
 
-    // To count and calculate frames per second, smoothed
-    history: FrameHistory,
     mem_viewer: MemoryViewer,
+    control_panel: ControlPanel,
+    palette_picker: PalettePicker,
 
-    is_memory_viewer_open: bool,
     is_vram_window_open: bool,
 }
 
@@ -39,20 +42,22 @@ impl Default for Kevboy {
     fn default() -> Self {
         Self {
             emulator: Emulator::new(),
+            history: FrameHistory::default(),
+            
             frame_buffer: [127, 134, 15, 255].repeat(LCD_WIDTH * LCD_HEIGHT),
             raw_fb: [127, 134, 15, 255].repeat(256 * 256),
 
-            history: FrameHistory::default(),
             mem_viewer: MemoryViewer::new(),
+            control_panel: ControlPanel::default(),
+            palette_picker: PalettePicker::default(),
 
-            is_memory_viewer_open: false,
             is_vram_window_open: false,
         }
     }
 }
 
 impl App for Kevboy {
-    fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &Context, frame: &mut Frame) {
         self.history.update(ctx, frame);
         frame.set_window_title(&format!("Kevboy ({} fps)", self.history.fps().trunc()));
 
@@ -66,8 +71,8 @@ impl App for Kevboy {
         //      Start of UI declarations
         // ----------------------------------
 
-        TopBottomPanel::top("menu").show(ctx, |ui| {
-            menu::bar(ui, |ui| {
+        TopBottomPanel::top("menu").show(ctx, |root| {
+            menu::bar(root, |ui| {
                 ui.menu_button("File", |ui| {
                     if ui.button("Open ROM").clicked() {
                         let file = rfd::FileDialog::new()
@@ -142,17 +147,26 @@ impl App for Kevboy {
                 });
 
                 ui.menu_button("Options", |ui| {
-                    ui.add(Button::new("Controls"));
-                    ui.add(Button::new("Palettes"));
+                    if ui.button("Controls").clicked() {
+                        self.control_panel.open = !self.control_panel.open;
+                    };
+
+                    ui.menu_button("Change palette",|ui| {
+                        ui.add(RadioButton::new(false, "Monochrome"));
+                        ui.add(RadioButton::new(true, "LCD Green"));
+                        ui.add(RadioButton::new(false, "Chocolate"));
+                        if ui.add(RadioButton::new(false, "Custom...")).clicked() {
+                            self.palette_picker.open = !self.palette_picker.open;
+                        }
+                    });
                 });
 
                 ui.menu_button("Debug", |ui| {
                     if ui.button("Show memory (hex)").clicked() {
-                        self.is_memory_viewer_open = !self.is_memory_viewer_open;
+                        self.mem_viewer.open = !self.mem_viewer.open;
                     }
                     if ui.button("Open VRAM viewer").clicked() {
                         self.is_vram_window_open = !self.is_vram_window_open;
-
                     }
                 });
             });
@@ -228,23 +242,53 @@ impl App for Kevboy {
                             ui.add(
                                 TextEdit::multiline(&mut "")
                                     .hint_text("Disassembly not implemented yet...")
-                                    .font(TextStyle::Monospace),
+                                    .code_editor(),
                             );
                         });
                 });
             });
         });
 
-        if self.is_memory_viewer_open {
-            Window::new("Memory")
-                .open(&mut self.is_memory_viewer_open)
+        // ------------------------------------
+        //    Handle open state of windows
+        // ------------------------------------
+
+        // Change and customize controls in this window
+        if self.control_panel.open {
+            let mut control_panel_open = self.control_panel.open.clone();
+            Window::new("⌨ Controls")
+                .open(&mut control_panel_open)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    self.control_panel.show(ctx, ui);
+                });
+            self.control_panel.open = control_panel_open;
+        }
+
+        // Change and customize the color palette of the Game Boy
+        if self.palette_picker.open {
+            let mut palette_window_open = self.palette_picker.open.clone();
+            Window::new("🎨 Palettes")
+                .open(&mut palette_window_open)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    self.palette_picker.show(ui);
+                });
+            self.palette_picker.open = palette_window_open;
+        }
+
+        if self.mem_viewer.open {
+            let mut mem_viewer_open = self.mem_viewer.open.clone();
+            Window::new("💾 Memory")
+                .open(&mut mem_viewer_open)
                 .show(ctx, |ui| {
                     self.mem_viewer.show(ui);
                 });
+            self.mem_viewer.open = mem_viewer_open;
         }
 
         if self.is_vram_window_open {
-            Window::new("BG Map")
+            Window::new("🖼 BG Map")
                 .open(&mut self.is_vram_window_open)
                 .show(ctx, |ui| {
                     let image = RetainedImage::from_color_image(
@@ -291,6 +335,7 @@ impl Kevboy {
             self.emulator.cycle_count += self.emulator.step() as u16;
         }
 
+        // Normal frame buffer for frontend, gets swapped for double buffering
         self.frame_buffer = self
             .emulator
             .bus
@@ -300,6 +345,7 @@ impl Kevboy {
             .flat_map(|c| c.to_array())
             .collect();
 
+        // Raw background tile map for debugging
         self.raw_fb = self
             .emulator
             .bus
