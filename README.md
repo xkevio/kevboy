@@ -23,7 +23,15 @@ Serial (link cable) is emulated in so far that games that rely on it do work, th
 
 ## Controls:
 
-Currently, the controls cannot be customized as I am still focusing on the emulation core.
+Controls may be customized via `Options > Controls`. For manual editing (not recommended, key order needs to be preserved), settings are stored here:
+
+- Linux: `/home/UserName/.local/share/Kevboy`
+- macOS: `/Users/UserName/Library/Application Support/Kevboy`
+- Windows: `C:\Users\UserName\AppData\Roaming\Kevboy`
+
+Some keys might not be supported.
+
+For a full list, see: https://docs.rs/egui/latest/egui/enum.Key.html
 
 |   **Keyboard**   | **Game Boy** |
 |:----------------:|:------------:|
