@@ -38,8 +38,8 @@ pub struct Kevboy {
     emulator: Emulator,
     history: FrameHistory,
 
-    frame_buffer: Vec<u8>,
-    raw_fb: Vec<u8>,
+    frame_buffer: Vec<Color32>,
+    raw_fb: Vec<Color32>,
 
     mem_viewer: MemoryViewer,
     control_panel: ControlPanel,
@@ -60,8 +60,8 @@ impl Kevboy {
             emulator: Emulator::new(),
             history: FrameHistory::default(),
 
-            frame_buffer: [127, 134, 15, 255].repeat(LCD_WIDTH * LCD_HEIGHT),
-            raw_fb: [127, 134, 15, 255].repeat(256 * 256),
+            frame_buffer: [Green::WHITE].repeat(LCD_WIDTH * LCD_HEIGHT),
+            raw_fb: [Green::WHITE].repeat(256 * 256),
 
             mem_viewer: MemoryViewer::new(),
             control_panel: ControlPanel::new(cc),
@@ -82,8 +82,8 @@ impl Kevboy {
             emulator,
             history: FrameHistory::default(),
 
-            frame_buffer: [127, 134, 15, 255].repeat(LCD_WIDTH * LCD_HEIGHT),
-            raw_fb: [127, 134, 15, 255].repeat(256 * 256),
+            frame_buffer: [Green::WHITE].repeat(LCD_WIDTH * LCD_HEIGHT),
+            raw_fb: [Green::WHITE].repeat(256 * 256),
 
             mem_viewer: MemoryViewer::new_with_memory(rom, true),
             control_panel: ControlPanel::new(cc),
@@ -114,7 +114,10 @@ impl App for Kevboy {
 
         let image = RetainedImage::from_color_image(
             "frame",
-            ColorImage::from_rgba_unmultiplied([LCD_WIDTH, LCD_HEIGHT], &self.frame_buffer),
+            ColorImage {
+                size: [LCD_WIDTH, LCD_HEIGHT],
+                pixels: self.frame_buffer.clone(),
+            },
         )
         .with_options(TextureOptions::NEAREST);
 
@@ -381,7 +384,10 @@ impl App for Kevboy {
                 .show(ctx, |ui| {
                     let image = RetainedImage::from_color_image(
                         "vram",
-                        ColorImage::from_rgba_unmultiplied([256, 256], &self.raw_fb),
+                        ColorImage {
+                            size: [256, 256],
+                            pixels: self.raw_fb.clone(),
+                        },
                     )
                     .with_options(TextureOptions::NEAREST);
 
@@ -422,11 +428,11 @@ impl Kevboy {
             .ppu
             .ui_frame_buffer
             .iter()
-            .flat_map(|c| match *c {
-                ScreenColor::White => self.palette_picker.colors["white"].to_array(),
-                ScreenColor::LightGray => self.palette_picker.colors["light_gray"].to_array(),
-                ScreenColor::Gray => self.palette_picker.colors["gray"].to_array(),
-                ScreenColor::Black => self.palette_picker.colors["black"].to_array(),
+            .map(|c| match *c {
+                ScreenColor::White => self.palette_picker.colors["white"],
+                ScreenColor::LightGray => self.palette_picker.colors["light_gray"],
+                ScreenColor::Gray => self.palette_picker.colors["gray"],
+                ScreenColor::Black => self.palette_picker.colors["black"],
             })
             .collect();
 
@@ -437,11 +443,11 @@ impl Kevboy {
             .ppu
             .raw_frame
             .iter()
-            .flat_map(|c| match *c {
-                ScreenColor::White => self.palette_picker.colors["white"].to_array(),
-                ScreenColor::LightGray => self.palette_picker.colors["light_gray"].to_array(),
-                ScreenColor::Gray => self.palette_picker.colors["gray"].to_array(),
-                ScreenColor::Black => self.palette_picker.colors["black"].to_array(),
+            .map(|c| match *c {
+                ScreenColor::White => self.palette_picker.colors["white"],
+                ScreenColor::LightGray => self.palette_picker.colors["light_gray"],
+                ScreenColor::Gray => self.palette_picker.colors["gray"],
+                ScreenColor::Black => self.palette_picker.colors["black"],
             })
             .collect();
 
