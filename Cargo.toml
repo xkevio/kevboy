@@ -8,10 +8,13 @@ strip = true
 
 [dependencies]
 anyhow = "1.0.68"
-eframe = "0.20.1"
+eframe = {version = "0.20.1", features = ["persistence"]}
+egui = { version = "0.20.1", features = ["serde"] }
 egui_extras = "0.20.0"
+hashlink = { version = "0.8.1", features = ["serde", "serde_impl"] }
 image = "0.24.5"
 rfd = "0.10.0"
+serde = "1.0.152"
 
 [dev-dependencies]
 log = "0.4.17"
