@@ -49,7 +49,7 @@ impl MemoryViewer {
                             RichText::new(
                                 chunk
                                     .iter()
-                                    .map(|b| format!("{:02X?} ", b))
+                                    .map(|b| format!("{b:02X?} "))
                                     .collect::<String>(),
                             )
                             .monospace(),

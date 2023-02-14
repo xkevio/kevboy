@@ -1,29 +1,39 @@
 use std::{
     fs::{self, File},
     io::Write,
+    path::PathBuf,
 };
 
 use eframe::{
     egui::{
-        menu, Button, CentralPanel, CollapsingHeader, Context, Key,
-        KeyboardShortcut, Modifiers, RadioButton, RichText, TextEdit, TextureOptions,
-        TopBottomPanel, Window,
+        menu, Button, CentralPanel, CollapsingHeader, Context, Key, KeyboardShortcut, Modifiers,
+        RichText, TextEdit, TextureOptions, TopBottomPanel, Window,
     },
     epaint::{Color32, ColorImage},
-    App, Frame,
+    App, CreationContext, Frame, Storage,
 };
 use egui_extras::RetainedImage;
+use hashlink::LinkedHashSet;
 
 use crate::emulator::Emulator;
 use crate::{
     cpu::registers::Flag,
-    ppu::ppu::{LCD_HEIGHT, LCD_WIDTH},
+    ppu::{
+        color_palette::{Chocolate, Green, Monochrome, ScreenColor},
+        ppu::{LCD_HEIGHT, LCD_WIDTH},
+    },
     ui::memory_viewer::MemoryViewer,
 };
 
-use super::{control_panel::ControlPanel, palette_picker::PalettePicker};
+use super::{
+    control_panel::ControlPanel,
+    palette_picker::{Palette, PalettePicker},
+};
 use crate::ui::frame_history::FrameHistory;
 
+/// Overarching struct that handles the emulator
+/// and keeps track of UI elements since we are using
+/// an immediate mode GUI.
 pub struct Kevboy {
     emulator: Emulator,
     history: FrameHistory,
@@ -35,28 +45,69 @@ pub struct Kevboy {
     control_panel: ControlPanel,
     palette_picker: PalettePicker,
 
+    recent_roms: LinkedHashSet<PathBuf>,
     is_vram_window_open: bool,
 }
 
-impl Default for Kevboy {
-    fn default() -> Self {
+/// Exposes two functions to create the overarching emulator object
+impl Kevboy {
+    /// Create overarching emulator object with no ROM loaded
+    ///
+    /// `CreationContext` is needed for its `storage`, so that we can
+    /// store some local settings like controls, colors, etc.
+    pub fn new(cc: &CreationContext) -> Self {
         Self {
             emulator: Emulator::new(),
             history: FrameHistory::default(),
-            
+
             frame_buffer: [127, 134, 15, 255].repeat(LCD_WIDTH * LCD_HEIGHT),
             raw_fb: [127, 134, 15, 255].repeat(256 * 256),
 
             mem_viewer: MemoryViewer::new(),
-            control_panel: ControlPanel::default(),
-            palette_picker: PalettePicker::default(),
+            control_panel: ControlPanel::new(cc),
+            palette_picker: PalettePicker::new(cc),
 
+            recent_roms: eframe::get_value::<LinkedHashSet<_>>(cc.storage.unwrap(), "recent_roms")
+                .unwrap_or_default(),
+            is_vram_window_open: false,
+        }
+    }
+
+    /// For starting the emulator from the command line
+    pub fn with_rom(rom: &[u8], cc: &CreationContext) -> Self {
+        let mut emulator = Emulator::new();
+        emulator.load_rom(rom);
+
+        Self {
+            emulator,
+            history: FrameHistory::default(),
+
+            frame_buffer: [127, 134, 15, 255].repeat(LCD_WIDTH * LCD_HEIGHT),
+            raw_fb: [127, 134, 15, 255].repeat(256 * 256),
+
+            mem_viewer: MemoryViewer::new_with_memory(rom, true),
+            control_panel: ControlPanel::new(cc),
+            palette_picker: PalettePicker::new(cc),
+
+            recent_roms: eframe::get_value::<LinkedHashSet<_>>(cc.storage.unwrap(), "recent_roms")
+                .unwrap_or_default(),
             is_vram_window_open: false,
         }
     }
 }
 
 impl App for Kevboy {
+    /// Called on shutdown and regular intervals, uses local filesystem or local storage (web)
+    ///
+    /// We save colors, controls and recently opened ROMs.
+    fn save(&mut self, _storage: &mut dyn Storage) {
+        eframe::set_value(_storage, "colors", &self.palette_picker.colors);
+        eframe::set_value(_storage, "dir_controls", &self.control_panel.direction_keys);
+        eframe::set_value(_storage, "action_controls", &self.control_panel.action_keys);
+        eframe::set_value(_storage, "recent_roms", &self.recent_roms);
+    }
+
+    /// UI declarations and functionality, called every frame and also runs the emulator
     fn update(&mut self, ctx: &Context, frame: &mut Frame) {
         self.history.update(ctx, frame);
         frame.set_window_title(&format!("Kevboy ({} fps)", self.history.fps().trunc()));
@@ -74,13 +125,23 @@ impl App for Kevboy {
         TopBottomPanel::top("menu").show(ctx, |root| {
             menu::bar(root, |ui| {
                 ui.menu_button("File", |ui| {
+                    // Opens File Dialog filtered for the most common extensions.
+                    // Inserts path into `recent_roms` and saves it into local storage.
+                    // Then, loads the rom into the emulator and inits the memory viewer.
                     if ui.button("Open ROM").clicked() {
                         let file = rfd::FileDialog::new()
-                            .add_filter("Gameboy ROM", &["gb", "bin", "gbc"])
+                            .add_filter("Game Boy ROM", &["gb", "bin", "gbc"])
                             .pick_file();
 
                         if let Some(path) = file {
-                            let rom = fs::read(path).expect("ROM wasn't loaded correctly!");
+                            let rom = fs::read(path.clone()).expect("ROM wasn't loaded correctly!");
+                            self.recent_roms.insert(path);
+
+                            if let Some(storage) = frame.storage_mut() {
+                                eframe::set_value(storage, "recent_roms", &self.recent_roms);
+                                storage.flush();
+                            }
+
                             self.emulator.load_rom(&rom);
                             self.mem_viewer = MemoryViewer::new_with_memory(&rom, true);
                         }
@@ -88,9 +149,28 @@ impl App for Kevboy {
                         ui.close_menu();
                     }
 
+                    // Iterates through a copy of `recent_roms` and generates menu buttons from it
+                    // so that all the most recently loaded roms are there. Only displays the file name, not the full path.
+                    // Loads the emulator and memory viewer upon clicking a rom.
+                    ui.menu_button("Open recent ROMs", |ui| {
+                        for rom_path in self.recent_roms.clone().iter().rev() {
+                            if ui.button(rom_path.file_name().unwrap().to_str().unwrap()).clicked() {
+                                let rom = fs::read(rom_path).expect("ROM wasn't loaded correctly!");
+                                self.recent_roms.to_back(rom_path);
+
+                                self.emulator.load_rom(&rom);
+                                self.mem_viewer = MemoryViewer::new_with_memory(&rom, true);
+
+                                ui.close_menu();
+                            }
+                        }
+                    });
+
                     ui.separator();
 
-                    // Load save file
+                    // Load save file and restarts the game,
+                    // this is only enabled when a game is already loaded,
+                    // so that we can determine what game the save file belongs to.
                     if ui
                         .add_enabled(
                             !self.emulator.rom.is_empty(),
@@ -116,7 +196,7 @@ impl App for Kevboy {
                         }
                     }
 
-                    // Store save file
+                    // Store save file, only enabled when game is already loaded.
                     if ui
                         .add_enabled(
                             !self.emulator.rom.is_empty(),
@@ -146,16 +226,24 @@ impl App for Kevboy {
                     }
                 });
 
+                // Options for changing controls and color palettes.
+                // Both may open a new window and will save to local storage.
                 ui.menu_button("Options", |ui| {
                     if ui.button("Controls").clicked() {
                         self.control_panel.open = !self.control_panel.open;
                     };
 
                     ui.menu_button("Change palette",|ui| {
-                        ui.add(RadioButton::new(false, "Monochrome"));
-                        ui.add(RadioButton::new(true, "LCD Green"));
-                        ui.add(RadioButton::new(false, "Chocolate"));
-                        if ui.add(RadioButton::new(false, "Custom...")).clicked() {
+                        if ui.radio_value(&mut self.palette_picker.current_palette, Palette::Monochrome(Monochrome), "Monochrome").clicked() {
+                            self.palette_picker.change_colors(&Monochrome::BLACK, &Monochrome::GRAY, &Monochrome::LIGHT_GRAY, &Monochrome::WHITE);
+                        }
+                        if ui.radio_value(&mut self.palette_picker.current_palette, Palette::Green(Green), "LCD Green").clicked() {
+                            self.palette_picker.change_colors(&Green::BLACK, &Green::GRAY, &Green::LIGHT_GRAY, &Green::WHITE);
+                        }
+                        if ui.radio_value(&mut self.palette_picker.current_palette, Palette::Chocolate(Chocolate), "Chocolate").clicked() {
+                            self.palette_picker.change_colors(&Chocolate::BLACK, &Chocolate::GRAY, &Chocolate::LIGHT_GRAY, &Chocolate::WHITE);
+                        }
+                        if ui.radio_value(&mut self.palette_picker.current_palette, Palette::Custom, "Custom").clicked() {
                             self.palette_picker.open = !self.palette_picker.open;
                         }
                     });
@@ -255,30 +343,30 @@ impl App for Kevboy {
 
         // Change and customize controls in this window
         if self.control_panel.open {
-            let mut control_panel_open = self.control_panel.open.clone();
+            let mut control_panel_open = self.control_panel.open;
             Window::new("⌨ Controls")
                 .open(&mut control_panel_open)
                 .resizable(false)
                 .show(ctx, |ui| {
-                    self.control_panel.show(ctx, ui);
+                    self.control_panel.show(ctx, ui, frame);
                 });
-            self.control_panel.open = control_panel_open;
+            self.control_panel.open &= control_panel_open;
         }
 
         // Change and customize the color palette of the Game Boy
         if self.palette_picker.open {
-            let mut palette_window_open = self.palette_picker.open.clone();
+            let mut palette_window_open = self.palette_picker.open;
             Window::new("🎨 Palettes")
                 .open(&mut palette_window_open)
                 .resizable(false)
                 .show(ctx, |ui| {
-                    self.palette_picker.show(ui);
+                    self.palette_picker.show(ui, frame);
                 });
-            self.palette_picker.open = palette_window_open;
+            self.palette_picker.open &= palette_window_open;
         }
 
         if self.mem_viewer.open {
-            let mut mem_viewer_open = self.mem_viewer.open.clone();
+            let mut mem_viewer_open = self.mem_viewer.open;
             Window::new("💾 Memory")
                 .open(&mut mem_viewer_open)
                 .show(ctx, |ui| {
@@ -313,24 +401,16 @@ impl App for Kevboy {
     }
 }
 
+/// Second impl block for the run function
 impl Kevboy {
-    pub fn new(rom: &[u8]) -> Self {
-        let mut emulator = Emulator::new();
-        emulator.load_rom(rom);
-
-        Self {
-            emulator,
-            mem_viewer: MemoryViewer::new_with_memory(rom, true),
-            ..Default::default()
-        }
-    }
-
     fn run(&mut self, ctx: &Context) {
         while self.emulator.cycle_count < 17_556 {
-            self.emulator
-                .bus
-                .joypad
-                .tick(ctx, &mut self.emulator.bus.interrupt_handler);
+            self.emulator.bus.joypad.tick(
+                ctx,
+                &mut self.emulator.bus.interrupt_handler,
+                &self.control_panel.action_keys,
+                &self.control_panel.direction_keys,
+            );
 
             self.emulator.cycle_count += self.emulator.step() as u16;
         }
@@ -342,7 +422,12 @@ impl Kevboy {
             .ppu
             .ui_frame_buffer
             .iter()
-            .flat_map(|c| c.to_array())
+            .flat_map(|c| match *c {
+                ScreenColor::White => self.palette_picker.colors["white"].to_array(),
+                ScreenColor::LightGray => self.palette_picker.colors["light_gray"].to_array(),
+                ScreenColor::Gray => self.palette_picker.colors["gray"].to_array(),
+                ScreenColor::Black => self.palette_picker.colors["black"].to_array(),
+            })
             .collect();
 
         // Raw background tile map for debugging
@@ -352,7 +437,12 @@ impl Kevboy {
             .ppu
             .raw_frame
             .iter()
-            .flat_map(|c| c.to_array())
+            .flat_map(|c| match *c {
+                ScreenColor::White => self.palette_picker.colors["white"].to_array(),
+                ScreenColor::LightGray => self.palette_picker.colors["light_gray"].to_array(),
+                ScreenColor::Gray => self.palette_picker.colors["gray"].to_array(),
+                ScreenColor::Black => self.palette_picker.colors["black"].to_array(),
+            })
             .collect();
 
         self.emulator.cycle_count = 0;

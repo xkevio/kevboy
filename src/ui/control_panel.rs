@@ -1,33 +1,64 @@
-use eframe::egui::{Button, Context, Frame, Grid, Separator, TextEdit, Ui, Window};
+use eframe::{
+    egui::{Context, Grid, Key, Separator, TextEdit, Ui},
+    CreationContext,
+};
+use egui::{Button, Frame};
+use hashlink::LinkedHashMap;
 
 pub struct ControlPanel {
     pub open: bool,
-    direction_keys: [(String, String); 4],
-    action_keys: [(String, String); 4],
+
+    // LinkedHashMap keeps insertion order, which we want
+    // since we generate UI elements from this map.
+    pub direction_keys: LinkedHashMap<String, Key>,
+    pub action_keys: LinkedHashMap<String, Key>,
+
+    button_width: f32,
 }
 
 impl Default for ControlPanel {
     fn default() -> Self {
         Self {
             open: Default::default(),
-            direction_keys: [
-                ("Up".to_string(), "W".to_string()),
-                ("Down".to_string(), "S".to_string()),
-                ("Left".to_string(), "A".to_string()),
-                ("Right".to_string(), "D".to_string()),
-            ],
-            action_keys: [
-                ("Start".to_string(), "Enter".to_string()),
-                ("Select".to_string(), "Q".to_string()),
-                ("A".to_string(), "P".to_string()),
-                ("B".to_string(), "O".to_string()),
-            ],
+            direction_keys: LinkedHashMap::from_iter([
+                ("Right".into(), Key::D),
+                ("Left".into(), Key::A),
+                ("Up".into(), Key::W),
+                ("Down".into(), Key::S),
+            ]),
+            action_keys: LinkedHashMap::from_iter([
+                ("A".into(), Key::P),
+                ("B".into(), Key::O),
+                ("Select".into(), Key::Q),
+                ("Start".into(), Key::Enter),
+            ]),
+            button_width: 0.0,
         }
     }
 }
 
 impl ControlPanel {
-    pub fn show(&mut self, ctx: &Context, ui: &mut Ui) {
+    pub fn new(cc: &CreationContext) -> Self {
+        if let Some(storage) = cc.storage {
+            if let (Some(dir_controls), Some(action_controls)) = (
+                eframe::get_value::<LinkedHashMap<String, Key>>(storage, "dir_controls"),
+                eframe::get_value::<LinkedHashMap<String, Key>>(storage, "action_controls"),
+            ) {
+                Self {
+                    open: Default::default(),
+                    direction_keys: dir_controls,
+                    action_keys: action_controls,
+                    button_width: 0.0,
+                }
+            } else {
+                ControlPanel::default()
+            }
+        } else {
+            ControlPanel::default()
+        }
+    }
+
+    pub fn show(&mut self, ctx: &Context, ui: &mut Ui, frame: &mut eframe::Frame) {
         ui.horizontal(|ui| {
             ui.add_space(ui.available_width() / 7.0);
 
@@ -35,18 +66,19 @@ impl ControlPanel {
                 ui.vertical(|ui| {
                     ui.heading("Direction");
                     Grid::new("direction").num_columns(2).show(ui, |ui| {
-                        for (k, v) in &mut self.direction_keys {
-                            ui.label(format!("{k}: "));
+                        for (name, key) in &mut self.direction_keys {
+                            ui.label(format!("{name}: "));
                             let response = ui.add(
-                                TextEdit::singleline(&mut v.clone())
+                                TextEdit::singleline(&mut (*key).name().to_string())
                                     .desired_width(50.0)
-                                    .hint_text(v.clone()),
+                                    .lock_focus(true)
+                                    .hint_text((*key).name()),
                             );
 
-                            if response.has_focus() {
+                            if response.has_focus() || response.lost_focus() {
                                 let buttons = &ctx.input().keys_down;
                                 if !buttons.is_empty() {
-                                    *v = format!("{:?}", buttons.iter().nth(0).unwrap());
+                                    *key = *buttons.iter().next().unwrap();
                                 }
                             }
 
@@ -62,18 +94,19 @@ impl ControlPanel {
                 ui.vertical(|ui| {
                     ui.heading("Action");
                     Grid::new("action").num_columns(2).show(ui, |ui| {
-                        for (k, v) in &mut self.action_keys {
-                            ui.label(format!("{k}: "));
+                        for (name, key) in &mut self.action_keys {
+                            ui.label(format!("{name}: "));
                             let response = ui.add(
-                                TextEdit::singleline(&mut v.clone())
+                                TextEdit::singleline(&mut (*key).name().to_string())
                                     .desired_width(50.0)
-                                    .hint_text(v.clone()),
+                                    .lock_focus(true)
+                                    .hint_text((*key).name()),
                             );
 
-                            if response.has_focus() {
+                            if response.has_focus() || response.lost_focus() {
                                 let buttons = &ctx.input().keys_down;
                                 if !buttons.is_empty() {
-                                    *v = format!("{:?}", buttons.iter().nth(0).unwrap());
+                                    *key = *buttons.iter().next().unwrap();
                                 }
                             }
 
@@ -87,8 +120,36 @@ impl ControlPanel {
         });
 
         ui.add_space(5.0);
+        ui.separator();
         ui.vertical_centered(|ui| {
-            ui.add(Button::new("Apply"));
+            ui.set_max_width(self.button_width);
+
+            self.button_width = ui
+                .horizontal(|ui| {
+                    if ui
+                        .button("Apply")
+                        .on_hover_text("Apply new controls and save them to a file")
+                        .clicked()
+                    {
+                        if let Some(storage) = frame.storage_mut() {
+                            eframe::set_value(storage, "dir_controls", &self.direction_keys);
+                            eframe::set_value(storage, "action_controls", &self.action_keys);
+                            storage.flush();
+                        }
+
+                        self.open = false;
+                    }
+                    if ui
+                        .add_enabled(false, Button::new("Reset"))
+                        .on_disabled_hover_text("Reset changes to controls")
+                        .clicked()
+                    {
+                        // TODO
+                    }
+                })
+                .response
+                .rect
+                .width();
         });
     }
 }

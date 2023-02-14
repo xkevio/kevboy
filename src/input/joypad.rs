@@ -1,4 +1,5 @@
 use eframe::egui::{Context, Key};
+use hashlink::LinkedHashMap;
 
 use crate::{
     cpu::interrupts::{Interrupt, InterruptHandler},
@@ -37,15 +38,24 @@ impl MMIO for Joypad {
 }
 
 impl Joypad {
-    pub fn tick(&mut self, ctx: &Context, interrupt_handler: &mut InterruptHandler) {
+    /// Handles input depending on the selected `ButtonType` (bits of the JOYP register)
+    /// and looks out for possible Joypad IRQs.
+    pub fn tick(
+        &mut self,
+        ctx: &Context,
+        interrupt_handler: &mut InterruptHandler,
+        action_keys: &LinkedHashMap<String, Key>,
+        direction_keys: &LinkedHashMap<String, Key>,
+    ) {
         self.reset_pressed_keys();
 
         match self.get_button_type() {
-            ButtonType::Action => self.handle_key_input(ctx, &[Key::P, Key::O, Key::Q, Key::Enter]),
-            ButtonType::Direction => self.handle_key_input(ctx, &[Key::D, Key::A, Key::W, Key::S]),
+            ButtonType::Action => self.handle_key_input(ctx, action_keys),
+            ButtonType::Direction => self.handle_key_input(ctx, direction_keys),
             _ => {}
         }
 
+        // Joypad IRQ gets requested when (the lower 4 bits of) JOYP changes from 0xF to anything else.
         if (self.prev_joyp & 0xF == 0xF) && (self.joyp & 0xF != 0xF) {
             interrupt_handler.request_interrupt(Interrupt::Joypad);
         }
@@ -53,19 +63,26 @@ impl Joypad {
         self.prev_joyp = self.joyp;
     }
 
+    /// Set all 4 key bits to 1 as that stands for "not pressed".
     pub fn reset_pressed_keys(&mut self) {
         self.joyp |= 0xF;
     }
 
-    /// `key1`: A or Right
+    /// `key1`: **A** or **Right**
     ///
-    /// `key2`: B or Left
+    /// `key2`: **B** or **Left**
     ///
-    /// `key3`: Shift or Up
+    /// `key3`: **Select** or **Up**
     ///
-    /// `key4`: Start or Down
-    fn handle_key_input(&mut self, ctx: &Context, keys: &[Key; 4]) {
-        for (bit, key) in keys.iter().enumerate() {
+    /// `key4`: **Start** or **Down**
+    ///
+    /// Takes `keys` from `ControlPanel` to ensure separation
+    /// between UI and backend. Meaning, two extra references will
+    /// have to be passed every tick.
+    ///
+    /// This implicit order is based on the bits of JOYP.
+    fn handle_key_input(&mut self, ctx: &Context, keys: &LinkedHashMap<String, Key>) {
+        for (bit, (_, key)) in keys.iter().enumerate() {
             if ctx.input().key_down(*key) {
                 self.joyp &= !(0x1 << bit as u8);
             }

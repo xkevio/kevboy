@@ -1,17 +1,17 @@
-use eframe::epaint::Color32;
-
 use crate::{
     cpu::interrupts::{Interrupt, InterruptHandler},
     mmu::mmio::MMIO,
     ppu::{color_palette::*, ppu_regs::PPURegisters, sprite, sprite::Sprite},
 };
 
+// --------- PPU constants ---------
 pub const LCD_WIDTH: usize = 160;
 pub const LCD_HEIGHT: usize = 144;
 
 const MODE3_START: i16 = 80;
 const HBLANK_START: i16 = 252;
 const LINE_END: i16 = 455;
+// --------------------------------
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum Mode {
@@ -31,14 +31,14 @@ pub enum DMATransferState {
 #[allow(clippy::upper_case_acronyms)]
 pub struct PPU {
     /// LCD screen array, current viewport (double buffering)
-    pub frame_buffer: Box<[Color32; LCD_WIDTH * LCD_HEIGHT]>,
-    pub ui_frame_buffer: Box<[Color32; LCD_WIDTH * LCD_HEIGHT]>,
+    pub frame_buffer: Box<[ScreenColor; LCD_WIDTH * LCD_HEIGHT]>,
+    pub ui_frame_buffer: Box<[ScreenColor; LCD_WIDTH * LCD_HEIGHT]>,
 
     /// Raw 256x256 background for debugging purposes
-    pub raw_frame: Vec<Color32>,
+    pub raw_frame: Vec<ScreenColor>,
 
     /// Contains pixels for the current line
-    current_line: Vec<Color32>,
+    current_line: Vec<ScreenColor>,
     /// Contains up to 10 sprites that will be rendered this line
     current_sprites: Vec<Sprite>,
 
@@ -143,16 +143,16 @@ impl MMIO for PPU {
 impl PPU {
     pub fn new() -> Self {
         Self {
-            frame_buffer: vec![LCD_WHITE; LCD_WIDTH * LCD_HEIGHT]
+            frame_buffer: vec![ScreenColor::White; LCD_WIDTH * LCD_HEIGHT]
                 .into_boxed_slice()
                 .try_into()
                 .unwrap(),
-            ui_frame_buffer: vec![LCD_WHITE; LCD_WIDTH * LCD_HEIGHT]
+            ui_frame_buffer: vec![ScreenColor::White; LCD_WIDTH * LCD_HEIGHT]
                 .into_boxed_slice()
                 .try_into()
                 .unwrap(),
 
-            raw_frame: vec![LCD_WHITE; 256 * 256],
+            raw_frame: vec![ScreenColor::White; 256 * 256],
 
             current_line: Vec::new(),
             current_sprites: Vec::new(),
@@ -307,7 +307,7 @@ impl PPU {
 
     /// Dumps 256x256 BG map for the vram viewer
     fn dump_bg_map(&mut self, vram: &[u8]) {
-        let mut current_line: Vec<Color32> = Vec::with_capacity(256);
+        let mut current_line: Vec<ScreenColor> = Vec::with_capacity(256);
 
         for i in 0..=255 {
             let unsigned_addressing = self.regs.lcdc & 0b10000 != 0;
@@ -335,15 +335,15 @@ impl PPU {
 
     // -------- ACTUAL RENDERING --------
 
-    fn get_current_line(&self, vram: &[u8]) -> Vec<Color32> {
+    fn get_current_line(&self, vram: &[u8]) -> Vec<ScreenColor> {
         let bg_win_line = self.get_bg_win_line(vram);
         let sprite_line = self.get_sprite_line(vram, &bg_win_line);
 
         sprite_line
     }
 
-    fn get_bg_win_line(&self, vram: &[u8]) -> Vec<Color32> {
-        let mut current_line: Vec<Color32> = Vec::with_capacity(256);
+    fn get_bg_win_line(&self, vram: &[u8]) -> Vec<ScreenColor> {
+        let mut current_line: Vec<ScreenColor> = Vec::with_capacity(256);
 
         if self.regs.is_bg_enabled() {
             let unsigned_addressing = self.regs.lcdc & 0b10000 != 0;
@@ -385,7 +385,7 @@ impl PPU {
                     for i in 0..8 {
                         let signed_wx = self.regs.wx as i16;
                         let win_index = (signed_wx - 7) + i as i16 + (j as i16 * 8);
-                        if win_index < 256 && win_index >= 0 {
+                        if (0..256).contains(&win_index) {
                             current_line[win_index as usize] = tile_row[i];
                         }
                     }
@@ -395,7 +395,7 @@ impl PPU {
 
         // Fill current_line when empty aka when bg / window were disabled
         if current_line.is_empty() {
-            current_line = vec![LCD_WHITE; 256];
+            current_line = vec![ScreenColor::White; 256];
         }
 
         current_line
@@ -405,8 +405,8 @@ impl PPU {
     // Sprites
     // -------------------------
 
-    fn get_sprite_line(&self, vram: &[u8], current_line: &[Color32]) -> Vec<Color32> {
-        let mut current_line: Vec<Color32> = Vec::from(current_line);
+    fn get_sprite_line(&self, vram: &[u8], current_line: &[ScreenColor]) -> Vec<ScreenColor> {
+        let mut current_line: Vec<ScreenColor> = Vec::from(current_line);
 
         if self.regs.is_obj_enabled() {
             for sprite in self.current_sprites.iter().rev() {
@@ -495,8 +495,8 @@ impl PPU {
         unsigned_addressing: bool,
         index: usize,
         y: u8,
-    ) -> [Color32; 8] {
-        let mut current_line: [Color32; 8] = [LCD_WHITE; 8];
+    ) -> [ScreenColor; 8] {
+        let mut current_line: [ScreenColor; 8] = [ScreenColor::White; 8];
 
         let line_index = (vram[index] as usize) * 16;
         let ly_bytes = (y % 8) as usize;

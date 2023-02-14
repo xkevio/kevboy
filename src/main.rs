@@ -29,12 +29,17 @@ fn main() -> Result<()> {
         height: 256,
     });
 
-    // Read in rom per command line
-    let kevboy = match std::env::args().nth(1) {
-        Some(rom) => Kevboy::new(&std::fs::read(rom)?),
-        None => Kevboy::default(),
-    };
-
-    eframe::run_native("Kevboy", native_options, Box::new(|_| Box::new(kevboy)));
+    eframe::run_native(
+        "Kevboy",
+        native_options,
+        Box::new(|cc| {
+            // Read in rom per command line
+            let kevboy = match std::env::args().nth(1) {
+                Some(rom) => Kevboy::with_rom(&std::fs::read(rom).unwrap(), cc),
+                None => Kevboy::new(cc),
+            };
+            Box::new(kevboy)
+        }),
+    );
     Ok(())
 }
