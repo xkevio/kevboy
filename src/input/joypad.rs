@@ -83,7 +83,7 @@ impl Joypad {
     /// This implicit order is based on the bits of JOYP.
     fn handle_key_input(&mut self, ctx: &Context, keys: &LinkedHashMap<String, Key>) {
         for (bit, (_, key)) in keys.iter().enumerate() {
-            if ctx.input().key_down(*key) {
+            if ctx.input(|i| i.key_down(*key)) {
                 self.joyp &= !(0x1 << bit as u8);
             }
         }

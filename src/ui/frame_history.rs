@@ -18,7 +18,7 @@ impl Default for FrameHistory {
 impl FrameHistory {
     pub fn update(&mut self, ctx: &Context, frame: &mut Frame) {
         let prev_time = frame.info().cpu_usage.unwrap_or_default();
-        self.frame_times.add(ctx.input().time, prev_time);
+        self.frame_times.add(ctx.input(|i| i.time), prev_time);
     }
 
     pub fn fps(&self) -> f32 {

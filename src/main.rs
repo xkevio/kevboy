@@ -40,6 +40,5 @@ fn main() -> Result<()> {
             };
             Box::new(kevboy)
         }),
-    );
-    Ok(())
+    ).map_err(|e| anyhow::anyhow!(e.to_string()))
 }

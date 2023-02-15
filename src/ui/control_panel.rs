@@ -76,7 +76,7 @@ impl ControlPanel {
                             );
 
                             if response.has_focus() || response.lost_focus() {
-                                let buttons = &ctx.input().keys_down;
+                                let buttons = ctx.input(|i| i.keys_down.clone());
                                 if !buttons.is_empty() {
                                     *key = *buttons.iter().next().unwrap();
                                 }
@@ -104,7 +104,7 @@ impl ControlPanel {
                             );
 
                             if response.has_focus() || response.lost_focus() {
-                                let buttons = &ctx.input().keys_down;
+                                let buttons = ctx.input(|i| i.keys_down.clone());
                                 if !buttons.is_empty() {
                                     *key = *buttons.iter().next().unwrap();
                                 }
