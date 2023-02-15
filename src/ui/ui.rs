@@ -429,10 +429,10 @@ impl Kevboy {
             .ui_frame_buffer
             .iter()
             .map(|c| match *c {
-                ScreenColor::White => self.palette_picker.colors["white"],
-                ScreenColor::LightGray => self.palette_picker.colors["light_gray"],
-                ScreenColor::Gray => self.palette_picker.colors["gray"],
-                ScreenColor::Black => self.palette_picker.colors["black"],
+                ScreenColor::White => self.palette_picker.colors["White"],
+                ScreenColor::LightGray => self.palette_picker.colors["Light Gray"],
+                ScreenColor::Gray => self.palette_picker.colors["Gray"],
+                ScreenColor::Black => self.palette_picker.colors["Black"],
             })
             .collect();
 
@@ -444,10 +444,10 @@ impl Kevboy {
             .raw_frame
             .iter()
             .map(|c| match *c {
-                ScreenColor::White => self.palette_picker.colors["white"],
-                ScreenColor::LightGray => self.palette_picker.colors["light_gray"],
-                ScreenColor::Gray => self.palette_picker.colors["gray"],
-                ScreenColor::Black => self.palette_picker.colors["black"],
+                ScreenColor::White => self.palette_picker.colors["White"],
+                ScreenColor::LightGray => self.palette_picker.colors["Light Gray"],
+                ScreenColor::Gray => self.palette_picker.colors["Gray"],
+                ScreenColor::Black => self.palette_picker.colors["Black"],
             })
             .collect();
 

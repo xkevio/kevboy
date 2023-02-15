@@ -1,11 +1,10 @@
+use crate::ppu::color_palette::{Chocolate, Green, Monochrome};
 use eframe::{
     egui::{Grid, Ui},
     epaint::Color32,
     CreationContext,
 };
-use std::collections::BTreeMap;
-
-use crate::ppu::color_palette::{Chocolate, Green, Monochrome};
+use hashlink::LinkedHashMap;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Palette {
@@ -20,8 +19,8 @@ pub struct PalettePicker {
     pub open: bool,
     pub current_palette: Palette,
 
-    pub colors: BTreeMap<String, Color32>,
-    prev_colors: BTreeMap<String, Color32>,
+    pub colors: LinkedHashMap<String, Color32>,
+    prev_colors: LinkedHashMap<String, Color32>,
 
     button_width: f32,
 }
@@ -31,17 +30,17 @@ impl Default for PalettePicker {
         Self {
             open: Default::default(),
             current_palette: Palette::Green(Green),
-            colors: BTreeMap::from([
-                ("black".into(), Green::BLACK),
-                ("gray".into(), Green::GRAY),
-                ("light_gray".into(), Green::LIGHT_GRAY),
-                ("white".into(), Green::WHITE),
+            colors: LinkedHashMap::from_iter([
+                ("Black".into(), Green::BLACK),
+                ("Gray".into(), Green::GRAY),
+                ("Light Gray".into(), Green::LIGHT_GRAY),
+                ("White".into(), Green::WHITE),
             ]),
-            prev_colors: BTreeMap::from([
-                ("black".into(), Green::BLACK),
-                ("gray".into(), Green::GRAY),
-                ("light_gray".into(), Green::LIGHT_GRAY),
-                ("white".into(), Green::WHITE),
+            prev_colors: LinkedHashMap::from_iter([
+                ("Black".into(), Green::BLACK),
+                ("Gray".into(), Green::GRAY),
+                ("Light Gray".into(), Green::LIGHT_GRAY),
+                ("White".into(), Green::WHITE),
             ]),
             button_width: 0.0,
         }
@@ -51,7 +50,7 @@ impl Default for PalettePicker {
 impl PalettePicker {
     pub fn new(cc: &CreationContext) -> Self {
         if let Some(storage) = cc.storage {
-            if let Some(colors) = eframe::get_value::<BTreeMap<_, _>>(storage, "colors") {
+            if let Some(colors) = eframe::get_value::<LinkedHashMap<_, _>>(storage, "colors") {
                 let prev_colors = colors.clone();
                 Self {
                     open: Default::default(),
@@ -75,10 +74,10 @@ impl PalettePicker {
         light_gray: &Color32,
         white: &Color32,
     ) {
-        self.colors.insert("black".into(), *black);
-        self.colors.insert("gray".into(), *gray);
-        self.colors.insert("light_gray".into(), *light_gray);
-        self.colors.insert("white".into(), *white);
+        self.colors["Black"] = *black;
+        self.colors["Gray"] = *gray;
+        self.colors["Light Gray"] = *light_gray;
+        self.colors["White"] = *white;
     }
 
     pub fn show(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
@@ -90,18 +89,7 @@ impl PalettePicker {
                 ui.add_space(ui.available_width() / 3.0);
                 Grid::new("colors").show(ui, |ui| {
                     for (k, v) in &mut self.colors {
-                        // Since we use snake_case for the color names in the settings,
-                        // convert them to normal spelling for display
-                        let ui_text = k
-                            .split('_')
-                            .map(|s| {
-                                let uppercase_char = s.get(..1).unwrap().to_uppercase();
-                                format!("{}{}", uppercase_char, s.get(1..).unwrap())
-                            })
-                            .collect::<Vec<_>>()
-                            .join(" ");
-
-                        ui.label(format!("{ui_text}: "));
+                        ui.label(format!("{k}: "));
                         ui.color_edit_button_srgba(v);
                         ui.end_row();
                     }
