@@ -24,10 +24,13 @@ impl Emulator {
         }
     }
 
+    /// Load ROM and dispatch correct MBC based on header bytes.
+    /// 
+    /// Read out title, RAM and ROM size and set flags based on header
+    /// checksum. Initializes `Cartridge` for the Bus.
     pub fn load_rom(&mut self, rom: &[u8]) {
         self.reset();
 
-        // initialize cartridge, TODO: enum dispatch?
         let rom_size_kb = 32 * (1 << rom[0x0148]);
         let ram_size_kb = match rom[0x0149] {
             0x00 => 0,
@@ -52,14 +55,19 @@ impl Emulator {
             .or_else(|_| std::str::from_utf8(&rom[0x0134..=0x0142]))
             .or_else(|_| std::str::from_utf8(&rom[0x0134..=0x013E]))
             .unwrap();
-        println!("{title}");
-        println!("MBC: {:#06X}", rom[0x0147]);
 
         self.bus.cartridge = Cartridge::new(cartridge_type, title);
         self.rom = rom.to_vec(); // TODO: redundant?
         self.cpu.registers.load_header_checksum(rom[0x014D]);
     }
 
+    /// Step emulator by ticking CPU, advancing it one instruction and returning
+    /// the cycles it took.
+    /// 
+    /// `Bus` is passed for sub-instruction level accuracy so that the bus
+    /// and its components can tick during instructions.
+    /// 
+    /// Handles interrupts and returns the appropriate amount of cycles if one occured.
     pub fn step(&mut self) -> u8 {
         if self.cpu.handle_interrupts(&mut self.bus) {
             self.cycle_count += 5;
@@ -67,6 +75,72 @@ impl Emulator {
 
         self.cpu.tick(&mut self.bus)
     }
+
+    // ------------ CARTRIDGE INFO FOR DISPLAY ---------------
+    pub fn get_full_mbc_title(&self) -> Option<&str> {
+        if self.rom.is_empty() {
+            return None;
+        }
+
+        match self.rom[0x0147] {
+            0x00 => Some("ROM ONLY"),
+            0x01 => Some("MBC1"),
+            0x02 => Some("MBC1+RAM"),
+            0x03 => Some("MBC1+RAM+BATTERY"),
+            0x05 => Some("MBC2"),
+            0x06 => Some("MBC2+BATTERY"),
+            0x0F => Some("MBC3+TIMER+BATTERY"),
+            0x10 => Some("MBC3+TIMER+RAM+BATTERY"),
+            0x11 => Some("MBC3"),
+            0x12 => Some("MBC3+RAM"),
+            0x13 => Some("MBC3+RAM+BATTERY"),
+            0x19 => Some("MBC5"),
+            0x1A => Some("MBC5+RAM"),
+            0x1B => Some("MBC5+RAM+BATTERY"),
+            0x1C => Some("MBC5+RUMBLE"),
+            0x1D => Some("MBC5+RUMBLE+RAM"),
+            0x1E => Some("MBC5+RUMBLE+RAM+BATTERY"),
+            0x20 => Some("MBC6"),
+            0x22 => Some("MBC7+SENSOR+RUMBLE+RAM+BATTERY"),
+            _ => None
+        }
+    }
+
+    pub fn get_destination_code(&self) -> Option<&str> {
+        if self.rom.is_empty() {
+            return None;
+        }
+
+        match self.rom[0x14A] {
+            0x00 => Some("Japan (and possibly overseas)"),
+            0x01 => Some("Overseas only"),
+            _ => None
+        }
+    }
+
+    pub fn get_rom_size(&self) -> Option<usize> {
+        if self.rom.is_empty() {
+            return None;
+        }
+
+        Some(32 * (1 << self.rom[0x0148]))
+    }
+
+    pub fn get_ram_size(&self) -> Option<u8> {
+        if self.rom.is_empty() {
+            return None;
+        }
+
+        match self.rom[0x0149] {
+            0x00 => Some(0),
+            0x02 => Some(8),
+            0x03 => Some(32),
+            0x04 => Some(128),
+            0x05 => Some(64),
+            _ => unimplemented!("RAM size not supported!"),
+        }
+    }
+    // ------------ CARTRIDGE INFO FOR DISPLAY ---------------
 
     fn reset(&mut self) {
         self.cpu = CPU::new();

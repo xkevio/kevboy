@@ -15,7 +15,6 @@ hashlink = { version = "0.8.1", features = ["serde", "serde_impl"] }
 image = "0.24.5"
 rfd = "0.10.0"
 serde = "1.0.152"
-syntect = "5.0.0"
 
 [dev-dependencies]
 log = "0.4.17"

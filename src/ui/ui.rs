@@ -7,11 +7,12 @@ use std::{
 use eframe::{
     egui::{
         menu, Button, CentralPanel, CollapsingHeader, Context, Key, KeyboardShortcut, Modifiers,
-        RichText, TextEdit, TextureOptions, TopBottomPanel, Window,
+        RichText, TextureOptions, TopBottomPanel, Window,
     },
     epaint::{Color32, ColorImage},
     App, CreationContext, Frame, Storage,
 };
+use egui::Grid;
 use egui_extras::RetainedImage;
 use hashlink::LinkedHashSet;
 
@@ -326,15 +327,31 @@ impl App for Kevboy {
 
                     ui.add_space(10.0);
 
-                    // Instructions / Disassembly
-                    CollapsingHeader::new("Instructions")
+                    // Cartridge Info
+                    CollapsingHeader::new("Cartridge Information")
                         .default_open(true)
                         .show(ui, |ui| {
-                            ui.add(
-                                TextEdit::multiline(&mut "")
-                                    .hint_text("Disassembly not implemented yet...")
-                                    .code_editor(),
-                            );
+                            Grid::new("cartridge").striped(true).show(ui, |ui| {
+                                ui.label("Title: ");
+                                ui.label(&self.emulator.bus.cartridge.title);
+                                ui.end_row();
+
+                                ui.label("MBC: ");
+                                ui.label(self.emulator.get_full_mbc_title().unwrap_or_default());
+                                ui.end_row();
+
+                                ui.label("Destination: ");
+                                ui.label(self.emulator.get_destination_code().unwrap_or_default());
+                                ui.end_row();
+
+                                ui.label("ROM size: ");
+                                ui.label(format!("{} KiB", self.emulator.get_rom_size().unwrap_or_default()));
+                                ui.end_row();
+
+                                ui.label("RAM size: ");
+                                ui.label(format!("{} KiB", self.emulator.get_ram_size().unwrap_or_default()));
+                                ui.end_row();
+                            });
                         });
                 });
             });
