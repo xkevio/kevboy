@@ -128,6 +128,8 @@ impl Bus {
             self.interrupt_handler.request_interrupt(Interrupt::Timer);
         }
 
+        self.apu.tick((self.timer.div >> 8) as u8);
+
         self.serial
             .tick(&mut self.interrupt_handler, cycles_passed, self.timer.div);
 
