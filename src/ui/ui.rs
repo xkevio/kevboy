@@ -111,7 +111,7 @@ impl App for Kevboy {
     /// UI declarations and functionality, called every frame and also runs the emulator
     fn update(&mut self, ctx: &Context, frame: &mut Frame) {
         self.history.update(ctx, frame);
-        frame.set_window_title(&format!("Kevboy ({} fps)", self.history.fps().trunc()));
+        frame.set_window_title(&format!("Kevboy ({} fps)", self.history.fps()));
 
         let image = RetainedImage::from_color_image(
             "frame",

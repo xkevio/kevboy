@@ -1,5 +1,9 @@
 # WIP Game Boy (DMG) Emulator
 
+<p align="center">
+<img src="icon/kirby2.png" alt="Kirby's Dream Land 2" width="500" />
+</p>
+
 ## Installation
 
 - Clone with `git@github.com:xkevio/kevboy.git`
