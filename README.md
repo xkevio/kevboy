@@ -1,7 +1,7 @@
 # WIP Game Boy (DMG) Emulator
 
 <p align="center">
-<img src="icon/kirby2.png" alt="Kirby's Dream Land 2" width="500" />
+<img src="icon/kirby2.png" alt="Kirby's Dream Land 2" width="450" />
 </p>
 
 ## Installation
