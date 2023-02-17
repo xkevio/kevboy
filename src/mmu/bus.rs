@@ -49,7 +49,7 @@ impl MMIO for Bus {
                 0xFF01 | 0xFF02 => self.serial.read(address),
                 0xFF04..=0xFF07 => self.timer.read(address),
                 0xFF0F => self.interrupt_handler.intf,
-                0xFF10..=0xFF26 => self.apu.read(address),
+                0xFF10..=0xFF3F => self.apu.read(address),
                 0xFF40..=0xFF4B => self.ppu.read(address),
                 0xFF50 => self.disable_boot_rom,
                 _ => 0xFF,
@@ -76,7 +76,7 @@ impl MMIO for Bus {
                 0xFF01 | 0xFF02 => self.serial.write(address, value),
                 0xFF04..=0xFF07 => self.timer.write(address, value),
                 0xFF0F => self.interrupt_handler.intf = value | 0b1110_0000,
-                0xFF10..=0xFF26 => self.apu.write(address, value),
+                0xFF10..=0xFF3F => self.apu.write(address, value),
                 0xFF40..=0xFF4B => {
                     self.ppu
                         .write_with_callback(address, value, &mut self.interrupt_handler)

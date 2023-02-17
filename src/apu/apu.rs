@@ -163,6 +163,8 @@ impl ChannelFour {
 /// Uses an internal `div_apu` timer based on bit 4 of DIV.
 #[allow(clippy::upper_case_acronyms)]
 pub struct APU {
+    pub wave_ram: [u8; 0x10],
+
     div_apu: u8,
     div_bit: u8,
 
@@ -180,6 +182,8 @@ pub struct APU {
 impl Default for APU {
     fn default() -> Self {
         Self {
+            wave_ram: [0xFF; 0x10],
+
             div_apu: 0,
             div_bit: 0,
 
@@ -196,75 +200,111 @@ impl Default for APU {
 }
 
 impl MMIO for APU {
+    // Here, we mask on reads and not writes since write-only bits are very present
+    // and should always read back as 1. Plus, it makes clearing easier.
     fn read(&mut self, address: u16) -> u8 {
         match address {
-            0xFF10 => self.ch1.nr10,
-            0xFF11 => self.ch1.nr11,
+            0xFF10 => self.ch1.nr10 | 0x80,
+            0xFF11 => self.ch1.nr11 | 0x3F,
             0xFF12 => self.ch1.nr12,
-            0xFF13 => self.ch1.nr13,
-            0xFF14 => self.ch1.nr14,
+            0xFF13 => self.ch1.nr13 | 0xFF,
+            0xFF14 => self.ch1.nr14 | 0xBF,
 
-            0xFF16 => self.ch2.nr21,
+            0xFF16 => self.ch2.nr21 | 0x3F,
             0xFF17 => self.ch2.nr22,
-            0xFF18 => self.ch2.nr23,
-            0xFF19 => self.ch2.nr24,
+            0xFF18 => self.ch2.nr23 | 0xFF,
+            0xFF19 => self.ch2.nr24 | 0xBF,
 
-            0xFF1A => self.ch3.nr30,
-            0xFF1B => self.ch3.nr31,
-            0xFF1C => self.ch3.nr32,
-            0xFF1D => self.ch3.nr33,
-            0xFF1E => self.ch3.nr34,
+            0xFF1A => self.ch3.nr30 | 0x7F,
+            0xFF1B => self.ch3.nr31 | 0xFF,
+            0xFF1C => self.ch3.nr32 | 0x9F,
+            0xFF1D => self.ch3.nr33 | 0xFF,
+            0xFF1E => self.ch3.nr34 | 0xBF,
 
-            0xFF20 => self.ch4.nr41,
+            0xFF20 => self.ch4.nr41 | 0xFF,
             0xFF21 => self.ch4.nr42,
             0xFF22 => self.ch4.nr43,
-            0xFF23 => self.ch4.nr44,
+            0xFF23 => self.ch4.nr44 | 0xBF,
 
             0xFF24 => self.nr50,
             0xFF25 => self.nr51,
-            0xFF26 => self.nr52,
+            0xFF26 => self.nr52 | 0x70,
+
+            0xFF30..=0xFF3F => self.wave_ram[(address - 0xFF30) as usize],
             _ => 0xFF,
         }
     }
 
-    // TODO: mask on read not write?
     fn write(&mut self, address: u16, value: u8) {
         // NR52 is writable even with APU turned off
         if address == 0xFF26 {
-            self.nr52 |= value & (1 << 7);
+            self.nr52 = (value & (1 << 7)) | (self.nr52 & 0x7F);
 
+            // Turning the APU off clears all registers besides NR52
             if !self.is_apu_enabled() {
                 self.ch1.clear();
                 self.ch2.clear();
                 self.ch3.clear();
                 self.ch4.clear();
+
+                self.nr50 = 0;
+                self.nr51 = 0;
             }
+        }
+
+        // Wave RAM is also readable and writable no matter the APU state
+        if (0xFF30..=0xFF3F).contains(&address) {
+            self.wave_ram[(address - 0xFF30) as usize] = value;
         }
 
         // All registers are read-only when APU is turned off
         if self.is_apu_enabled() {
             match address {
-                0xFF10 => self.ch1.nr10 = value | 0b1000_0000,
+                0xFF10 => self.ch1.nr10 = value,
                 0xFF11 => self.ch1.nr11 = value,
-                0xFF12 => self.ch1.nr12 = value,
+                0xFF12 => {
+                    if value & 0xF8 == 0 {
+                        // Turn DAC and ch1 off
+                        self.nr52 &= !(1);
+                    }
+                    self.ch1.nr12 = value;
+                },
                 0xFF13 => self.ch1.nr13 = value,
-                0xFF14 => self.ch1.nr14 = value | 0b0011_1000,
+                0xFF14 => self.ch1.nr14 = value,
 
                 0xFF16 => self.ch2.nr21 = value,
-                0xFF17 => self.ch2.nr22 = value,
+                0xFF17 => {
+                    if value & 0xF8 == 0 {
+                        // Turn DAC and ch2 off
+                        self.nr52 &= !(1 << 1);
+                    }
+                    self.ch2.nr22 = value;
+                },
                 0xFF18 => self.ch2.nr23 = value,
-                0xFF19 => self.ch2.nr24 = value | 0b0011_1000,
+                0xFF19 => self.ch2.nr24 = value,
 
-                0xFF1A => self.ch3.nr30 = value | 0b0111_1111,
+                0xFF1A => {
+                    if value & (1 << 7) == 0 {
+                        // Turn DAC and ch3 off
+                        self.nr52 &= !(1 << 2);
+                    }
+                    self.ch3.nr30 = value;
+                },
                 0xFF1B => self.ch3.nr31 = value,
-                0xFF1C => self.ch3.nr32 = value | 0b1001_1111,
+                0xFF1C => self.ch3.nr32 = value,
                 0xFF1D => self.ch3.nr33 = value,
-                0xFF1E => self.ch3.nr34 = value | 0b0011_1000,
+                0xFF1E => self.ch3.nr34 = value,
 
-                0xFF20 => self.ch4.nr41 = value | 0b1100_0000,
-                0xFF21 => self.ch4.nr42 = value,
+                0xFF20 => self.ch4.nr41 = value,
+                0xFF21 => {
+                    if value & 0xF8 == 0 {
+                        // Turn DAC and ch4 off
+                        self.nr52 &= !(1 << 3);
+                    }
+                    self.ch4.nr42 = value;
+                },
                 0xFF22 => self.ch4.nr43 = value,
-                0xFF23 => self.ch4.nr44 = value | 0b0011_1111,
+                0xFF23 => self.ch4.nr44 = value,
 
                 0xFF24 => self.nr50 = value,
                 0xFF25 => self.nr51 = value,
