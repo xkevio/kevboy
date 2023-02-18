@@ -51,7 +51,7 @@ jobs:
 
       - name: Release
         uses: softprops/action-gh-release@v1
-        # if: startsWith('v0.1.0', 'refs/tags/')
+        if: startsWith('v0.1.0', 'refs/tags/')
         with:
           files: target/release/kevboy.exe
         env:
@@ -77,7 +77,7 @@ jobs:
 
       - name: Release
         uses: softprops/action-gh-release@v1
-        # if: startsWith('v0.1.0', 'refs/tags/')
+        if: startsWith('v0.1.0', 'refs/tags/')
         with:
           files: |
             target/release/kevboy_darwin
