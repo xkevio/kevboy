@@ -128,7 +128,10 @@ impl Bus {
             self.interrupt_handler.request_interrupt(Interrupt::Timer);
         }
 
-        self.apu.tick((self.timer.div >> 8) as u8);
+        // TODO: Clock in T-cycles or M-cycles?
+        for _ in 0..(cycles_passed * 4) {
+            self.apu.tick((self.timer.div >> 8) as u8);
+        }
 
         self.serial
             .tick(&mut self.interrupt_handler, cycles_passed, self.timer.div);

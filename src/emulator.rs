@@ -25,7 +25,7 @@ impl Emulator {
     }
 
     /// Load ROM and dispatch correct MBC based on header bytes.
-    /// 
+    ///
     /// Read out title, RAM and ROM size and set flags based on header
     /// checksum. Initializes `Cartridge` for the Bus.
     pub fn load_rom(&mut self, rom: &[u8]) {
@@ -63,10 +63,10 @@ impl Emulator {
 
     /// Step emulator by ticking CPU, advancing it one instruction and returning
     /// the cycles it took.
-    /// 
+    ///
     /// `Bus` is passed for sub-instruction level accuracy so that the bus
     /// and its components can tick during instructions.
-    /// 
+    ///
     /// Handles interrupts and returns the appropriate amount of cycles if one occured.
     pub fn step(&mut self) -> u8 {
         if self.cpu.handle_interrupts(&mut self.bus) {
@@ -102,7 +102,7 @@ impl Emulator {
             0x1E => Some("MBC5+RUMBLE+RAM+BATTERY"),
             0x20 => Some("MBC6"),
             0x22 => Some("MBC7+SENSOR+RUMBLE+RAM+BATTERY"),
-            _ => None
+            _ => None,
         }
     }
 
@@ -114,7 +114,7 @@ impl Emulator {
         match self.rom[0x14A] {
             0x00 => Some("Japan (and possibly overseas)"),
             0x01 => Some("Overseas only"),
-            _ => None
+            _ => None,
         }
     }
 

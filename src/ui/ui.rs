@@ -345,11 +345,17 @@ impl App for Kevboy {
                                 ui.end_row();
 
                                 ui.label("ROM size: ");
-                                ui.label(format!("{} KiB", self.emulator.get_rom_size().unwrap_or_default()));
+                                ui.label(format!(
+                                    "{} KiB",
+                                    self.emulator.get_rom_size().unwrap_or_default()
+                                ));
                                 ui.end_row();
 
                                 ui.label("RAM size: ");
-                                ui.label(format!("{} KiB", self.emulator.get_ram_size().unwrap_or_default()));
+                                ui.label(format!(
+                                    "{} KiB",
+                                    self.emulator.get_ram_size().unwrap_or_default()
+                                ));
                                 ui.end_row();
                             });
                         });
