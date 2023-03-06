@@ -44,7 +44,7 @@ pub struct PPU {
 
     /// All PPU registers needed for DMG, MMIO
     regs: PPURegisters,
-    /// Current dot the PPU is, at relative to beginning of a line
+    /// Current dot the PPU is at relative to beginning of a line
     dots: i16,
 
     /// Current mode, based on bits 1-0 of STAT
