@@ -397,6 +397,7 @@ pub struct APU {
     streams: (OutputStream, OutputStreamHandle),
     /// Buffer to hold samples, gets played when certain number of samples is exceeded
     audio_buffer: Vec<f32>,
+    capacitor: f32,
 }
 
 impl Default for APU {
@@ -419,6 +420,7 @@ impl Default for APU {
 
             streams: OutputStream::try_default().unwrap(),
             audio_buffer: Vec::new(),
+            capacitor: 0.0,
         }
     }
 }
@@ -602,27 +604,47 @@ impl APU {
                 let right_sample = ch2_sample.signum()
                     * (ch2_sample.abs() * (1.0 / ((self.nr50 & 0b111) as f32 + 1.0)));
 
-                self.audio_buffer.push(left_sample); // left
-                self.audio_buffer.push(right_sample); // right
+                let ls = self.high_pass(left_sample);
+                let rs = self.high_pass(right_sample);
+
+                self.audio_buffer.push(ls); // left
+                self.audio_buffer.push(rs); // right
             } else {
                 self.audio_buffer.push(0.0); // left
                 self.audio_buffer.push(0.0); // right
             }
-
-            // TODO: size of audio buffer?
-            if self.audio_buffer.len() == 4096 {
-                let source = SamplesBuffer::new(2, 44100, self.audio_buffer.clone());
-                self.streams.1.play_raw(source).unwrap();
-                self.audio_buffer.clear();
-            }
         }
 
+        // TODO: size of audio buffer?
+        if self.audio_buffer.len() == 800 {
+            let source = SamplesBuffer::new(2, 44100, self.audio_buffer.clone());
+            self.streams.1.play_raw(source).unwrap();
+            self.audio_buffer.clear();
+        }
+        
         self.internal_cycles += 1;
         self.div_bit = (div & (1 << 4)) >> 4;
     }
 
+    /// Checks if the APU is enabled by checking bit 7 of NR52.
+    /// 
+    /// - If **on**, channels get ticked and internal values updated
+    /// - If **off**, only duty cycles and internal cycles get updated
     fn is_apu_enabled(&self) -> bool {
         self.nr52 & (1 << 7) != 0
+    }
+
+    /// High-Pass filter capacitor which slowly removes DC offset.
+    /// 
+    /// Runs after DAC conversion so that a digital volume of 0 which gets converted to -1
+    /// slowly gets removed and turned back to silence.
+    /// 
+    /// Charge factor: 0.999958^(4MHz / sample rate)
+    fn high_pass(&mut self, in_sample: f32) -> f32 {
+        let out = in_sample - self.capacitor;
+        self.capacitor = in_sample - out * 0.996;
+
+        return out;
     }
 
     // -------- CHANNEL STATUS --------
