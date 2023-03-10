@@ -1,5 +1,5 @@
 use crate::mmu::mmio::MMIO;
-use rodio::{buffer::SamplesBuffer, OutputStream, OutputStreamHandle};
+use rodio::{buffer::SamplesBuffer, OutputStream, OutputStreamHandle, queue::{SourcesQueueOutput}, Sink};
 
 // WAVE DUTY CYCLES
 const WAVE_DUTY_CYCLES: [[u8; 8]; 4] = [
@@ -395,8 +395,10 @@ pub struct APU {
 
     /// Rodio frontend streams to play sound
     streams: (OutputStream, OutputStreamHandle),
-    /// Buffer to hold samples, gets played when certain number of samples is exceeded
-    audio_buffer: Vec<f32>,
+    /// Queue to append samples to, never stops playing
+    sink: (Sink, SourcesQueueOutput<f32>),
+    init: bool,
+
     capacitor: f32,
 }
 
@@ -419,7 +421,9 @@ impl Default for APU {
             nr52: 0xF1,
 
             streams: OutputStream::try_default().unwrap(),
-            audio_buffer: Vec::new(),
+            sink: Sink::new_idle(),
+            init: false,
+
             capacitor: 0.0,
         }
     }
@@ -607,21 +611,18 @@ impl APU {
                 let ls = self.high_pass(left_sample);
                 let rs = self.high_pass(right_sample);
 
-                self.audio_buffer.push(ls); // left
-                self.audio_buffer.push(rs); // right
+                self.sink.0.append(SamplesBuffer::new(2, 44100, vec![ls, rs]));
             } else {
-                self.audio_buffer.push(0.0); // left
-                self.audio_buffer.push(0.0); // right
+                self.sink.0.append(SamplesBuffer::new(2, 44100, vec![0.0, 0.0]));
             }
         }
 
-        // TODO: size of audio buffer?
-        if self.audio_buffer.len() == 800 {
-            let source = SamplesBuffer::new(2, 44100, self.audio_buffer.clone());
-            self.streams.1.play_raw(source).unwrap();
-            self.audio_buffer.clear();
+        // TODO: init Sink directly with OutputStreamHandle
+        if !self.init {
+            self.sink.0 = Sink::try_new(&self.streams.1).unwrap();
+            self.init = true;
         }
-        
+
         self.internal_cycles += 1;
         self.div_bit = (div & (1 << 4)) >> 4;
     }
