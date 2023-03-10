@@ -12,9 +12,14 @@ const WAVE_DUTY_CYCLES: [[u8; 8]; 4] = [
 /// Channel 1 produces square waves and uses both envelope and sweep
 /// functionality. Uses the wave constants above to produce said signals.
 struct ChannelOne {
-    pub buffer: Vec<u8>,
-    wave_duty_pos: u8,
+    volume: u8,
+    vol_timer: u8,
+
+    sweep_timer: u8,
+
     len_counter: u8,
+    duty_cycle: u8,
+    freq_timer: u16,
 
     nr10: u8,
     nr11: u8,
@@ -26,9 +31,14 @@ struct ChannelOne {
 impl Default for ChannelOne {
     fn default() -> Self {
         Self {
-            buffer: Vec::new(),
-            wave_duty_pos: 0,
+            volume: 0,
+            vol_timer: 0,
+
+            sweep_timer: 0,
+
             len_counter: 0,
+            duty_cycle: 0,
+            freq_timer: 0,
 
             nr10: 0x80,
             nr11: 0xBF,
@@ -40,21 +50,97 @@ impl Default for ChannelOne {
 }
 
 impl ChannelOne {
+    /// Frequency timer ticks every T-cycle.
+    pub fn duty_cycle(&mut self) {
+        self.freq_timer -= 1;
+
+        if self.freq_timer == 0 {
+            let freq = ((self.nr14 & 0b111) as u16) << 8 | self.nr13 as u16;
+            self.freq_timer = (2048 - freq) * 4;
+            self.duty_cycle = (self.duty_cycle + 1) % 8;
+        }
+    }
+
     pub fn tick(&mut self, div_apu: u8, nr52: &mut u8) {
-        // TODO: tick length timer and update duty cycle
-        // update envelope
         if div_apu % 2 == 0 {
             if self.len_counter > 0 && self.nr14 & (1 << 6) != 0 {
                 self.len_counter -= 1;
-                println!("ch1: {}", self.len_counter);
 
                 // Turn channel off when length counter reaches zero
                 if self.len_counter == 0 {
                     *nr52 &= !(1);
                 }
 
-                println!("{:#010b}", nr52);
             }
+        }
+
+        // Frequency sweep
+        if div_apu % 4 == 0 {
+            let sweep_pace = (self.nr10 & 0x70) >> 4;
+            if sweep_pace != 0 {
+                if self.sweep_timer > 0 {
+                    self.sweep_timer -= 1;
+                }
+
+                if self.sweep_timer == 0 {
+                    self.sweep_timer = sweep_pace;
+
+                    let wave_length = ((self.nr14 & 0b111) as u16) << 8 | self.nr13 as u16;
+                    let slope = self.nr10 & 0b111;
+
+                    // 0 = increase, 1 = decrease
+                    let new_wave_length = if self.nr10 & 0x08 == 0 {
+                        wave_length + (wave_length / 2u16.pow(slope as u32))
+                    } else {
+                        wave_length - (wave_length / 2u16.pow(slope as u32))
+                    };
+
+                    // Turn channel off when wave length overflows 11 bit value in addition mode
+                    if self.nr10 & 0x08 == 0 && new_wave_length > 0x7FF {
+                        *nr52 &= !(1);
+                    }
+
+                    self.nr13 = new_wave_length as u8;
+                    self.nr14 |= ((new_wave_length & 0x700) >> 8) as u8;
+                }
+            }
+        }
+
+        // Volume envelope
+        if div_apu % 8 == 0 {
+            if self.nr12 & 0b111 != 0 {
+                if self.vol_timer > 0 {
+                    self.vol_timer -= 1;
+                }
+
+                if self.vol_timer == 0 {
+                    self.vol_timer = self.nr12 & 0b111;
+
+                    if self.nr12 & 0x08 == 0 {
+                        if self.volume > 0 {
+                            self.volume -= 1
+                        }
+                    } else {
+                        if self.volume < 0xF {
+                            self.volume += 1
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Returns current sample of the square wave.
+    ///
+    /// Uses the DAC if it's on, otherwise returns zero.
+    pub fn sample(&self) -> f32 {
+        let sample = WAVE_DUTY_CYCLES[((self.nr11 & 0xC0) >> 6) as usize][self.duty_cycle as usize]
+            * self.volume;
+
+        if self.is_dac_on() {
+            (sample as f32 / 7.5) - 1.0
+        } else {
+            0.0
         }
     }
 
@@ -68,13 +154,16 @@ impl ChannelOne {
 
     /// Turn channel on when setting bit 7 of NRx4 and DAC is on.
     /// Bit check is in the `write` method of APU.
-    ///
-    /// TODO: 03-trigger extra length clock
     pub fn trigger(&mut self, nr52: &mut u8) {
         println!("trigger ch1");
         if self.len_counter == 0 {
             self.len_counter = 64;
         }
+
+        self.volume = (self.nr12 & 0xF0) >> 4;
+        self.vol_timer = self.nr12 & 0b111;
+        self.freq_timer = self.nr12 as u16 & 0b111;
+        self.sweep_timer = 0;
 
         // Only enable channel if DAC is on
         if self.is_dac_on() {
@@ -90,8 +179,6 @@ impl ChannelOne {
 /// Channel 2 produces square waves and uses just the envelope functionality.
 /// Uses the wave constants above to produce said signals.
 struct ChannelTwo {
-    pub buffer: Vec<u8>,
-
     volume: u8,
     vol_timer: u8,
 
@@ -108,8 +195,6 @@ struct ChannelTwo {
 impl Default for ChannelTwo {
     fn default() -> Self {
         Self {
-            buffer: Vec::new(),
-
             volume: 0,
             vol_timer: 0,
 
@@ -222,8 +307,9 @@ impl ChannelTwo {
 
 /// Channel 3 can produce custom waves from 4 bit samples based on Wave RAM.
 struct ChannelThree {
-    pub buffer: Vec<u8>,
+    current_index: u8,
     len_counter: u16,
+    freq_timer: u16,
 
     nr30: u8,
     nr31: u8,
@@ -235,8 +321,9 @@ struct ChannelThree {
 impl Default for ChannelThree {
     fn default() -> Self {
         Self {
-            buffer: Vec::new(),
+            current_index: 1,
             len_counter: 0,
+            freq_timer: 0,
 
             nr30: 0x7F,
             nr31: 0xFF,
@@ -248,20 +335,52 @@ impl Default for ChannelThree {
 }
 
 impl ChannelThree {
+    /// Frequency timer ticks every T-cycle.
+    pub fn duty_cycle(&mut self) {
+        self.freq_timer -= 1;
+
+        if self.freq_timer == 0 {
+            let freq = ((self.nr34 & 0b111) as u16) << 8 | self.nr33 as u16;
+            self.freq_timer = (2048 - freq) * 2;
+            self.current_index = (self.current_index + 1) % 32;
+        }
+    }
+
     pub fn tick(&mut self, div_apu: u8, nr52: &mut u8) {
-        // TODO: tick length timer and update duty cycle
-        // update envelope
         if div_apu % 2 == 0 {
             if self.len_counter > 0 && self.nr34 & (1 << 6) != 0 {
                 self.len_counter -= 1;
-
-                println!("ch3: {}", self.len_counter);
 
                 // Turn channel off when length counter reaches zero
                 if self.len_counter == 0 {
                     *nr52 &= !(1 << 2);
                 }
             }
+        }
+    }
+
+    /// Returns current sample of the square wave.
+    ///
+    /// Uses the DAC if it's on, otherwise returns zero.
+    pub fn sample(&self, wave_ram: &[u8]) -> f32 {
+        let raw_sample = if self.current_index % 2 == 0 {
+            (wave_ram[(self.current_index / 2) as usize] & 0xF0) >> 4
+        } else {
+            wave_ram[(self.current_index / 2) as usize] & 0x0F
+        };
+
+        let sample = match (self.nr32 & 0x60) >> 5 {
+            0b00 => 0,
+            0b01 => raw_sample,
+            0b10 => raw_sample >> 1,
+            0b11 => raw_sample >> 2,
+            _ => unreachable!()
+        };
+
+        if self.is_dac_on() {
+            (sample as f32 / 7.5) - 1.0
+        } else {
+            0.0
         }
     }
 
@@ -280,6 +399,9 @@ impl ChannelThree {
         if self.len_counter == 0 {
             self.len_counter = 256;
         }
+
+        // Quirk: ch3 starts at index 1, lower nibble of first byte
+        self.current_index = 1;
 
         // Only enable channel if DAC is on
         if self.is_dac_on() {
@@ -583,15 +705,17 @@ impl APU {
     // sound length tick every 2 ticks
     // ch1 freq sweep every 4 ticks
     pub fn tick(&mut self, div: u8) {
+        self.ch1.duty_cycle();
         self.ch2.duty_cycle();
+        self.ch3.duty_cycle();
 
         // DIV-APU is increased when bit 4 of DIV (upper byte) goes from 1 to 0. (falling edge)
         if self.is_apu_enabled() && (div & (1 << 4)) != 0x10 && self.div_bit == 1 {
             self.div_apu += 1;
 
-            // self.ch1.tick(self.div_apu, &mut self.nr52);
+            self.ch1.tick(self.div_apu, &mut self.nr52);
             self.ch2.tick(self.div_apu, &mut self.nr52);
-            // self.ch3.tick(self.div_apu, &mut self.nr52);
+            self.ch3.tick(self.div_apu, &mut self.nr52);
             // self.ch4.tick(self.div_apu, &mut self.nr52);
         }
 
@@ -599,22 +723,22 @@ impl APU {
         while self.internal_cycles >= 95 {
             self.internal_cycles -= 95;
 
-            let ch2_sample = self.ch2.sample();
+            let ch1_sample = if self.is_ch1_enabled() { self.ch1.sample() } else { 0.0 };
+            let ch2_sample = if self.is_ch2_enabled() { self.ch2.sample() } else { 0.0 };
+            let ch3_sample = if self.is_ch3_enabled() { self.ch3.sample(&self.wave_ram) } else { 0.0 };
+
+            let mix_sample = (ch1_sample + ch2_sample + ch3_sample) / 3.0;
 
             // Play silence when channel is disabled, otherwise mix DAC sample for left and right channel
-            if self.is_ch2_enabled() {
-                let left_sample = ch2_sample.signum()
-                    * (ch2_sample.abs() * (1.0 / (((self.nr50 & 0x70) >> 4) as f32 + 1.0)));
-                let right_sample = ch2_sample.signum()
-                    * (ch2_sample.abs() * (1.0 / ((self.nr50 & 0b111) as f32 + 1.0)));
+            let left_sample = mix_sample.signum()
+                * (mix_sample.abs() * (1.0 / (((self.nr50 & 0x70) >> 4) as f32 + 1.0)));
+            let right_sample = mix_sample.signum()
+                * (mix_sample.abs() * (1.0 / ((self.nr50 & 0b111) as f32 + 1.0)));
 
-                let ls = self.high_pass(left_sample);
-                let rs = self.high_pass(right_sample);
+            let ls = self.high_pass(left_sample);
+            let rs = self.high_pass(right_sample);
 
-                self.sink.0.append(SamplesBuffer::new(2, 44100, vec![ls, rs]));
-            } else {
-                self.sink.0.append(SamplesBuffer::new(2, 44100, vec![0.0, 0.0]));
-            }
+            self.sink.0.append(SamplesBuffer::new(2, 44100, [ls, rs]));
         }
 
         // TODO: init Sink directly with OutputStreamHandle
