@@ -416,8 +416,12 @@ impl ChannelThree {
 
 /// Channel 4 can produce pseudo random noise and also uses envelope.
 struct ChannelFour {
-    pub buffer: Vec<u8>,
+    volume: u8,
+    vol_timer: u8,
+
     len_counter: u8,
+    lfsr: u16, // technically a 15 bit register
+    freq_timer: u16,
 
     nr41: u8,
     nr42: u8,
@@ -428,8 +432,12 @@ struct ChannelFour {
 impl Default for ChannelFour {
     fn default() -> Self {
         Self {
-            buffer: Vec::new(),
+            volume: 0,
+            vol_timer: 0,
+
             len_counter: 0,
+            lfsr: 0,
+            freq_timer: 0,
 
             nr41: 0xFF,
             nr42: 0x00,
@@ -440,20 +448,73 @@ impl Default for ChannelFour {
 }
 
 impl ChannelFour {
+    /// Frequency timer ticks every T-cycle.
+    pub fn duty_cycle(&mut self) {
+        self.freq_timer -= 1;
+
+        if self.freq_timer == 0 {
+            let base_divisor = ((self.nr43 & 0b111) * 16).max(8);
+            let clock_shift = (self.nr43 & 0xF0) >> 4;
+
+            self.freq_timer = (base_divisor << clock_shift) as u16;
+
+            let xor_bit = (self.lfsr & 1) ^ ((self.lfsr & 2) >> 1);
+            self.lfsr = self.lfsr >> 1;
+            self.lfsr |= xor_bit << 14; // set bit 14 (15 bit register)
+
+            // set bit 6 as well if LFSR width mode is set
+            if self.nr43 & 0x08 != 0 {
+                self.lfsr |= xor_bit << 6;
+            }
+        }
+    }
+
     pub fn tick(&mut self, div_apu: u8, nr52: &mut u8) {
-        // TODO: tick length timer and update duty cycle
-        // update envelope
         if div_apu % 2 == 0 {
             if self.len_counter > 0 && self.nr44 & (1 << 6) != 0 {
                 self.len_counter -= 1;
-
-                println!("ch4: {}", self.len_counter);
 
                 // Turn channel off when length counter reaches zero
                 if self.len_counter == 0 {
                     *nr52 &= !(1 << 3);
                 }
             }
+        }
+
+        // Volume envelope
+        if div_apu % 8 == 0 {
+            if self.nr42 & 0b111 != 0 {
+                if self.vol_timer > 0 {
+                    self.vol_timer -= 1;
+                }
+
+                if self.vol_timer == 0 {
+                    self.vol_timer = self.nr42 & 0b111;
+
+                    if self.nr42 & 0x08 == 0 {
+                        if self.volume > 0 {
+                            self.volume -= 1
+                        }
+                    } else {
+                        if self.volume < 0xF {
+                            self.volume += 1
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Returns current sample of the square wave.
+    ///
+    /// Uses the DAC if it's on, otherwise returns zero.
+    pub fn sample(&self) -> f32 {
+        let sample = (!(self.lfsr as u8) & 1) * self.volume;
+
+        if self.is_dac_on() {
+            (sample as f32 / 7.5) - 1.0
+        } else {
+            0.0
         }
     }
 
@@ -471,6 +532,15 @@ impl ChannelFour {
         if self.len_counter == 0 {
             self.len_counter = 64;
         }
+
+        self.lfsr = u16::MAX;
+        self.volume = (self.nr42 & 0xF0) >> 4;
+        self.vol_timer = self.nr42 & 0b111;
+
+        let base_divisor = ((self.nr43 & 0b111) * 16).max(8);
+        let clock_shift = (self.nr43 & 0xF0) >> 4;
+
+        self.freq_timer = (base_divisor << clock_shift) as u16;
 
         // Only enable channel if DAC is on
         if self.is_dac_on() {
@@ -700,14 +770,11 @@ impl MMIO for APU {
 }
 
 impl APU {
-    // TODO:
-    // envelope sweep every 8 ticks
-    // sound length tick every 2 ticks
-    // ch1 freq sweep every 4 ticks
     pub fn tick(&mut self, div: u8) {
         self.ch1.duty_cycle();
         self.ch2.duty_cycle();
         self.ch3.duty_cycle();
+        self.ch4.duty_cycle();
 
         // DIV-APU is increased when bit 4 of DIV (upper byte) goes from 1 to 0. (falling edge)
         if self.is_apu_enabled() && (div & (1 << 4)) != 0x10 && self.div_bit == 1 {
@@ -716,7 +783,7 @@ impl APU {
             self.ch1.tick(self.div_apu, &mut self.nr52);
             self.ch2.tick(self.div_apu, &mut self.nr52);
             self.ch3.tick(self.div_apu, &mut self.nr52);
-            // self.ch4.tick(self.div_apu, &mut self.nr52);
+            self.ch4.tick(self.div_apu, &mut self.nr52);
         }
 
         // TODO: magic number (cpu freq / 44.1kHz)
@@ -726,8 +793,9 @@ impl APU {
             let ch1_sample = if self.is_ch1_enabled() { self.ch1.sample() } else { 0.0 };
             let ch2_sample = if self.is_ch2_enabled() { self.ch2.sample() } else { 0.0 };
             let ch3_sample = if self.is_ch3_enabled() { self.ch3.sample(&self.wave_ram) } else { 0.0 };
+            let ch4_sample = if self.is_ch4_enabled() { self.ch4.sample() } else { 0.0 };
 
-            let mix_sample = (ch1_sample + ch2_sample + ch3_sample) / 3.0;
+            let mix_sample = (ch1_sample + ch2_sample + ch3_sample + ch4_sample) / 4.0;
 
             // Play silence when channel is disabled, otherwise mix DAC sample for left and right channel
             let left_sample = mix_sample.signum()
