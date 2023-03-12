@@ -139,7 +139,10 @@ impl App for Kevboy {
 
                         if let Some(path) = file {
                             let rom = fs::read(path.clone()).expect("ROM wasn't loaded correctly!");
-                            self.recent_roms.insert(path);
+                            // Limit recent roms list to 10 (gets too cluttered otherwise)
+                            if !self.recent_roms.insert(path) && self.recent_roms.len() == 10  {
+                                self.recent_roms.pop_front();
+                            }
 
                             if let Some(storage) = frame.storage_mut() {
                                 eframe::set_value(storage, "recent_roms", &self.recent_roms);
