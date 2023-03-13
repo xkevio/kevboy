@@ -1,5 +1,7 @@
 use crate::mmu::mmio::MMIO;
-use rodio::{buffer::SamplesBuffer, OutputStream, OutputStreamHandle, queue::{SourcesQueueOutput}, Sink};
+use rodio::{
+    buffer::SamplesBuffer, queue::SourcesQueueOutput, OutputStream, OutputStreamHandle, Sink,
+};
 
 // WAVE DUTY CYCLES
 const WAVE_DUTY_CYCLES: [[u8; 8]; 4] = [
@@ -70,7 +72,6 @@ impl ChannelOne {
                 if self.len_counter == 0 {
                     *nr52 &= !(1);
                 }
-
             }
         }
 
@@ -155,7 +156,6 @@ impl ChannelOne {
     /// Turn channel on when setting bit 7 of NRx4 and DAC is on.
     /// Bit check is in the `write` method of APU.
     pub fn trigger(&mut self, nr52: &mut u8) {
-        println!("trigger ch1");
         if self.len_counter == 0 {
             self.len_counter = 64;
         }
@@ -285,7 +285,6 @@ impl ChannelTwo {
     /// Turn channel on when setting bit 7 of NRx4 and DAC is on.
     /// Bit check is in the `write` method of APU.
     pub fn trigger(&mut self, nr52: &mut u8) {
-        println!("trigger ch2");
         if self.len_counter == 0 {
             self.len_counter = 64;
         }
@@ -321,7 +320,7 @@ struct ChannelThree {
 impl Default for ChannelThree {
     fn default() -> Self {
         Self {
-            current_index: 1,
+            current_index: 0,
             len_counter: 0,
             freq_timer: 0,
 
@@ -348,18 +347,18 @@ impl ChannelThree {
 
     pub fn tick(&mut self, div_apu: u8, nr52: &mut u8) {
         if div_apu % 2 == 0 {
-            if self.len_counter > 0 && self.nr34 & (1 << 6) != 0 {
+            if self.len_counter > 0 {
                 self.len_counter -= 1;
 
                 // Turn channel off when length counter reaches zero
-                if self.len_counter == 0 {
+                if self.len_counter == 0 && self.nr34 & (1 << 6) != 0 {
                     *nr52 &= !(1 << 2);
                 }
             }
         }
     }
 
-    /// Returns current sample of the square wave.
+    /// Returns current sample of wave RAM.
     ///
     /// Uses the DAC if it's on, otherwise returns zero.
     pub fn sample(&self, wave_ram: &[u8]) -> f32 {
@@ -374,7 +373,7 @@ impl ChannelThree {
             0b01 => raw_sample,
             0b10 => raw_sample >> 1,
             0b11 => raw_sample >> 2,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
 
         if self.is_dac_on() {
@@ -395,7 +394,6 @@ impl ChannelThree {
     /// Turn channel on when setting bit 7 of NRx4 and DAC is on.
     /// Bit check is in the `write` method of APU.
     pub fn trigger(&mut self, nr52: &mut u8) {
-        println!("trigger ch3");
         if self.len_counter == 0 {
             self.len_counter = 256;
         }
@@ -453,17 +451,18 @@ impl ChannelFour {
         self.freq_timer -= 1;
 
         if self.freq_timer == 0 {
-            let base_divisor = ((self.nr43 & 0b111) * 16).max(8);
+            let base_divisor = ((self.nr43 & 0b111) * 16).max(8) as u16;
             let clock_shift = (self.nr43 & 0xF0) >> 4;
 
-            self.freq_timer = (base_divisor << clock_shift) as u16;
+            self.freq_timer = base_divisor << clock_shift;
 
             let xor_bit = (self.lfsr & 1) ^ ((self.lfsr & 2) >> 1);
-            self.lfsr = self.lfsr >> 1;
+            self.lfsr = (self.lfsr >> 1) & !(1 << 14);
             self.lfsr |= xor_bit << 14; // set bit 14 (15 bit register)
 
             // set bit 6 as well if LFSR width mode is set
             if self.nr43 & 0x08 != 0 {
+                self.lfsr &= !(1 << 6);
                 self.lfsr |= xor_bit << 6;
             }
         }
@@ -528,7 +527,6 @@ impl ChannelFour {
     /// Turn channel on when setting bit 7 of NRx4 and DAC is on.
     /// Bit check is in the `write` method of APU.
     pub fn trigger(&mut self, nr52: &mut u8) {
-        println!("trigger ch4");
         if self.len_counter == 0 {
             self.len_counter = 64;
         }
@@ -537,10 +535,10 @@ impl ChannelFour {
         self.volume = (self.nr42 & 0xF0) >> 4;
         self.vol_timer = self.nr42 & 0b111;
 
-        let base_divisor = ((self.nr43 & 0b111) * 16).max(8);
+        let base_divisor = ((self.nr43 & 0b111) * 16).max(8) as u16;
         let clock_shift = (self.nr43 & 0xF0) >> 4;
 
-        self.freq_timer = (base_divisor << clock_shift) as u16;
+        self.freq_timer = base_divisor << clock_shift;
 
         // Only enable channel if DAC is on
         if self.is_dac_on() {
@@ -795,13 +793,38 @@ impl APU {
             let ch3_sample = if self.is_ch3_enabled() { self.ch3.sample(&self.wave_ram) } else { 0.0 };
             let ch4_sample = if self.is_ch4_enabled() { self.ch4.sample() } else { 0.0 };
 
-            let mix_sample = (ch1_sample + ch2_sample + ch3_sample + ch4_sample) / 4.0;
+            // Sound panning via NR51
+            let left_output = (self.nr51 & 0xF0) >> 4;
+            let mut left_mix_sample = 0.0;
+
+            let right_output = self.nr51 & 0x0F;
+            let mut right_mix_sample = 0.0;
+
+            for (i, sample) in [ch1_sample, ch2_sample, ch3_sample, ch4_sample]
+                .iter()
+                .enumerate()
+            {
+                left_mix_sample += if left_output & (1 << i) != 0 {
+                    *sample
+                } else {
+                    0.0
+                };
+
+                right_mix_sample += if right_output & (1 << i) != 0 {
+                    *sample
+                } else {
+                    0.0
+                };
+            }
+
+            left_mix_sample /= 4.0;
+            right_mix_sample /= 4.0;
 
             // Play silence when channel is disabled, otherwise mix DAC sample for left and right channel
-            let left_sample = mix_sample.signum()
-                * (mix_sample.abs() * (1.0 / (((self.nr50 & 0x70) >> 4) as f32 + 1.0)));
-            let right_sample = mix_sample.signum()
-                * (mix_sample.abs() * (1.0 / ((self.nr50 & 0b111) as f32 + 1.0)));
+            let left_sample = left_mix_sample.signum()
+                * (left_mix_sample.abs() * (1.0 / (((self.nr50 & 0x70) >> 4) as f32 + 1.0)));
+            let right_sample = right_mix_sample.signum()
+                * (right_mix_sample.abs() * (1.0 / ((self.nr50 & 0b111) as f32 + 1.0)));
 
             let ls = self.high_pass(left_sample);
             let rs = self.high_pass(right_sample);
@@ -820,7 +843,7 @@ impl APU {
     }
 
     /// Checks if the APU is enabled by checking bit 7 of NR52.
-    /// 
+    ///
     /// - If **on**, channels get ticked and internal values updated
     /// - If **off**, only duty cycles and internal cycles get updated
     fn is_apu_enabled(&self) -> bool {
@@ -828,10 +851,10 @@ impl APU {
     }
 
     /// High-Pass filter capacitor which slowly removes DC offset.
-    /// 
+    ///
     /// Runs after DAC conversion so that a digital volume of 0 which gets converted to -1
     /// slowly gets removed and turned back to silence.
-    /// 
+    ///
     /// Charge factor: 0.999958^(4MHz / sample rate)
     fn high_pass(&mut self, in_sample: f32) -> f32 {
         let out = in_sample - self.capacitor;
