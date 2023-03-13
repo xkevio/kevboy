@@ -347,11 +347,11 @@ impl ChannelThree {
 
     pub fn tick(&mut self, div_apu: u8, nr52: &mut u8) {
         if div_apu % 2 == 0 {
-            if self.len_counter > 0 {
+            if self.len_counter > 0 && self.nr34 & (1 << 6) != 0 {
                 self.len_counter -= 1;
 
                 // Turn channel off when length counter reaches zero
-                if self.len_counter == 0 && self.nr34 & (1 << 6) != 0 {
+                if self.len_counter == 0 {
                     *nr52 &= !(1 << 2);
                 }
             }
@@ -504,7 +504,7 @@ impl ChannelFour {
         }
     }
 
-    /// Returns current sample of the square wave.
+    /// Returns current sample of the LFSR bit.
     ///
     /// Uses the DAC if it's on, otherwise returns zero.
     pub fn sample(&self) -> f32 {
