@@ -29,6 +29,7 @@ use crate::{
 use super::{
     control_panel::ControlPanel,
     palette_picker::{Palette, PalettePicker},
+    sound_settings::SoundSettings,
 };
 use crate::ui::frame_history::FrameHistory;
 
@@ -45,6 +46,7 @@ pub struct Kevboy {
     mem_viewer: MemoryViewer,
     control_panel: ControlPanel,
     palette_picker: PalettePicker,
+    sound_settings: SoundSettings,
 
     recent_roms: LinkedHashSet<PathBuf>,
     is_vram_window_open: bool,
@@ -67,6 +69,7 @@ impl Kevboy {
             mem_viewer: MemoryViewer::new(),
             control_panel: ControlPanel::new(cc),
             palette_picker: PalettePicker::new(cc),
+            sound_settings: SoundSettings::new(cc),
 
             recent_roms: eframe::get_value::<LinkedHashSet<_>>(cc.storage.unwrap(), "recent_roms")
                 .unwrap_or_default(),
@@ -89,6 +92,7 @@ impl Kevboy {
             mem_viewer: MemoryViewer::new_with_memory(rom, true),
             control_panel: ControlPanel::new(cc),
             palette_picker: PalettePicker::new(cc),
+            sound_settings: SoundSettings::new(cc),
 
             recent_roms: eframe::get_value::<LinkedHashSet<_>>(cc.storage.unwrap(), "recent_roms")
                 .unwrap_or_default(),
@@ -240,7 +244,7 @@ impl App for Kevboy {
                         self.control_panel.open = !self.control_panel.open;
                     };
 
-                    ui.menu_button("Change palette",|ui| {
+                    ui.menu_button("Change palette", |ui| {
                         if ui.radio_value(&mut self.palette_picker.current_palette, Palette::Monochrome(Monochrome), "Monochrome").clicked() {
                             self.palette_picker.change_colors(&Monochrome::BLACK, &Monochrome::GRAY, &Monochrome::LIGHT_GRAY, &Monochrome::WHITE);
                         }
@@ -254,6 +258,10 @@ impl App for Kevboy {
                             self.palette_picker.open = !self.palette_picker.open;
                         }
                     });
+
+                    if ui.button("Sound").clicked() {
+                        self.sound_settings.open = !self.sound_settings.open;
+                    }
                 });
 
                 ui.menu_button("Debug", |ui| {
@@ -382,6 +390,18 @@ impl App for Kevboy {
             self.control_panel.open &= control_panel_open;
         }
 
+        // Change and customize sound settings in this window
+        if self.sound_settings.open {
+            let mut sound_settings = self.sound_settings.open;
+            Window::new("🔊 Volume")
+                .open(&mut sound_settings)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    self.sound_settings.show(ui, frame);
+                });
+            self.sound_settings.open &= sound_settings;
+        }
+
         // Change and customize the color palette of the Game Boy
         if self.palette_picker.open {
             let mut palette_window_open = self.palette_picker.open;
@@ -446,6 +466,14 @@ impl Kevboy {
 
             self.emulator.cycle_count += self.emulator.step() as u16;
         }
+
+        // `sink` is a tuple of (Sink, SourcesQueueOutput<f32>)
+        self.emulator
+            .bus
+            .apu
+            .sink
+            .0
+            .set_volume(self.sound_settings.volume / 100.0);
 
         // Normal frame buffer for frontend, gets swapped for double buffering
         self.frame_buffer = self

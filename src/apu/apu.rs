@@ -583,10 +583,10 @@ pub struct APU {
     /// Global settings: On/Off switch
     nr52: u8,
 
+    /// Queue to append samples to, never stops playing
+    pub sink: (Sink, SourcesQueueOutput<f32>),
     /// Rodio frontend streams to play sound
     streams: (OutputStream, OutputStreamHandle),
-    /// Queue to append samples to, never stops playing
-    sink: (Sink, SourcesQueueOutput<f32>),
     init: bool,
 
     capacitor: f32,
@@ -610,8 +610,8 @@ impl Default for APU {
             nr51: 0xF3,
             nr52: 0xF1,
 
-            streams: OutputStream::try_default().unwrap(),
             sink: Sink::new_idle(),
+            streams: OutputStream::try_default().unwrap(),
             init: false,
 
             capacitor: 0.0,
