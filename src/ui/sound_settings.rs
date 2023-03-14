@@ -17,10 +17,10 @@ impl SoundSettings {
             if let Some(saved_volume) = eframe::get_value::<f32>(storage, "volume") {
                 saved_volume
             } else {
-                100.0
+                50.0
             }
         } else {
-            100.0
+            50.0
         };
 
         Self {

@@ -822,9 +822,9 @@ impl APU {
 
             // Play silence when channel is disabled, otherwise mix DAC sample for left and right channel
             let left_sample = left_mix_sample.signum()
-                * (left_mix_sample.abs() * (1.0 / (((self.nr50 & 0x70) >> 4) as f32 + 1.0)));
+                * (left_mix_sample.abs() * ((((self.nr50 & 0x70) >> 4) as f32 + 1.0) / 8.0));
             let right_sample = right_mix_sample.signum()
-                * (right_mix_sample.abs() * (1.0 / ((self.nr50 & 0b111) as f32 + 1.0)));
+                * (right_mix_sample.abs() * (((self.nr50 & 0b111) as f32 + 1.0) / 8.0));
 
             let ls = self.high_pass(left_sample);
             let rs = self.high_pass(right_sample);
