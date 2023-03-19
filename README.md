@@ -65,21 +65,11 @@ For a full list, see: https://docs.rs/egui/latest/egui/enum.Key.html
 | `dmg-acid2.gb`   | ✅     |
 | `sprite_priority.gb`   | ✅     |
 
-### Timer tests:
+### Timer tests: **all** but `rapid_toggle`.
 
-| Test                   | Status |
-|------------------------|--------|
-| `div_write.gb`         | ✅      |
-| `tim00.gb`             | ✅      |
-| `tim00_div_trigger.gb` | ✅      |
-| `tim01.gb`             | ✅       |
-| `tim01_div_trigger.gb` | ✅       |
-| `tim10.gb`             | ✅       |
-| `tim10_div_trigger.gb` | ✅       |
-| `tim11.gb`             | ✅       |
-| `tim11_div_trigger.gb` | ✅       |
-| `tima_reload.gb`       | ✅       |
+## TODO
 
-### Misc. tests:
-
-*// TODO*
+- [ ] Implement fast-forward feature
+- [ ] Implement the Real Time Clock (RTC) in MBC3
+- [ ] Implement enabling and disabling individual sound channels
+- [ ] More automatic saving

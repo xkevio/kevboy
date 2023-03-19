@@ -191,11 +191,12 @@ impl PPU {
                 }
                 Mode::Mode3 => {
                     // Get pixels of current line ("draw" at end of mode)
-                    if self.current_line.is_empty() {
-                        self.current_line = self.get_current_line(vram);
-                    }
-
                     if self.dots >= HBLANK_START {
+                        // Important: draw later during Mode3 to fix parts of pocket.gb
+                        if self.current_line.is_empty() {
+                            self.current_line = self.get_current_line(vram);
+                        }
+
                         if self.regs.is_window_visible()
                             && self.regs.ly >= self.regs.wy
                             && self.regs.is_window_enabled()

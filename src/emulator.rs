@@ -142,7 +142,7 @@ impl Emulator {
     }
     // ------------ CARTRIDGE INFO FOR DISPLAY ---------------
 
-    fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.cpu = CPU::new();
         self.bus = Bus::new();
         self.rom = Vec::new();

@@ -12,7 +12,10 @@ use eframe::{
     epaint::{Color32, ColorImage},
     App, CreationContext, Frame, Storage,
 };
-use egui::Grid;
+use egui::{
+    Grid, ScrollArea, SelectableLabel, SidePanel,
+    TextureHandle, Vec2,
+};
 use egui_extras::RetainedImage;
 use hashlink::LinkedHashSet;
 
@@ -40,6 +43,7 @@ pub struct Kevboy {
     emulator: Emulator,
     history: FrameHistory,
 
+    texture: Option<TextureHandle>,
     frame_buffer: Vec<Color32>,
     raw_fb: Vec<Color32>,
 
@@ -50,6 +54,12 @@ pub struct Kevboy {
 
     recent_roms: LinkedHashSet<PathBuf>,
     is_vram_window_open: bool,
+
+    playback_button_width: f32,
+    pause: bool,
+    right: bool,
+
+    integer_scaling: (bool, u8),
 }
 
 /// Exposes two functions to create the overarching emulator object
@@ -63,6 +73,7 @@ impl Kevboy {
             emulator: Emulator::new(),
             history: FrameHistory::default(),
 
+            texture: None,
             frame_buffer: [Green::WHITE].repeat(LCD_WIDTH * LCD_HEIGHT),
             raw_fb: [Green::WHITE].repeat(256 * 256),
 
@@ -74,6 +85,12 @@ impl Kevboy {
             recent_roms: eframe::get_value::<LinkedHashSet<_>>(cc.storage.unwrap(), "recent_roms")
                 .unwrap_or_default(),
             is_vram_window_open: false,
+
+            playback_button_width: 0.0,
+            pause: false,
+            right: false,
+
+            integer_scaling: (false, 0),
         }
     }
 
@@ -86,6 +103,7 @@ impl Kevboy {
             emulator,
             history: FrameHistory::default(),
 
+            texture: None,
             frame_buffer: [Green::WHITE].repeat(LCD_WIDTH * LCD_HEIGHT),
             raw_fb: [Green::WHITE].repeat(256 * 256),
 
@@ -97,6 +115,12 @@ impl Kevboy {
             recent_roms: eframe::get_value::<LinkedHashSet<_>>(cc.storage.unwrap(), "recent_roms")
                 .unwrap_or_default(),
             is_vram_window_open: false,
+
+            playback_button_width: 0.0,
+            pause: false,
+            right: false,
+
+            integer_scaling: (false, 0),
         }
     }
 }
@@ -117,14 +141,21 @@ impl App for Kevboy {
         self.history.update(ctx, frame);
         frame.set_window_title(&format!("Kevboy ({} fps)", self.history.fps()));
 
-        let image = RetainedImage::from_color_image(
-            "frame",
-            ColorImage {
-                size: [LCD_WIDTH, LCD_HEIGHT],
-                pixels: self.frame_buffer.clone(),
-            },
-        )
-        .with_options(TextureOptions::NEAREST);
+        if let Some(tex) = &mut self.texture {
+            tex.set(
+                ColorImage {
+                    size: [LCD_WIDTH, LCD_HEIGHT],
+                    pixels: self.frame_buffer.clone(),
+                },
+                TextureOptions::NEAREST,
+            );
+        } else {
+            self.texture = Some(ctx.load_texture(
+                "fb",
+                ColorImage::new([LCD_WIDTH, LCD_HEIGHT], Green::WHITE),
+                TextureOptions::NEAREST,
+            ));
+        }
 
         // ----------------------------------
         //      Start of UI declarations
@@ -240,10 +271,6 @@ impl App for Kevboy {
                 // Options for changing controls and color palettes.
                 // Both may open a new window and will save to local storage.
                 ui.menu_button("Options", |ui| {
-                    if ui.button("Controls").clicked() {
-                        self.control_panel.open = !self.control_panel.open;
-                    };
-
                     ui.menu_button("Change palette", |ui| {
                         if ui.radio_value(&mut self.palette_picker.current_palette, Palette::Monochrome(Monochrome), "Monochrome").clicked() {
                             self.palette_picker.change_colors(&Monochrome::BLACK, &Monochrome::GRAY, &Monochrome::LIGHT_GRAY, &Monochrome::WHITE);
@@ -258,6 +285,27 @@ impl App for Kevboy {
                             self.palette_picker.open = !self.palette_picker.open;
                         }
                     });
+
+                    ui.menu_button("Scaling", |ui| {
+                        let (force, scale) = &mut self.integer_scaling;
+
+                        ui.checkbox(force, "Force integer scaling");
+                        ui.separator();
+                        ui.add_enabled_ui(*force, |ui| {
+                            ui.radio_value(scale, 0, "Automatic");
+                            ui.radio_value(scale, 1, "1x");
+                            ui.radio_value(scale, 2, "2x");
+                            ui.radio_value(scale, 3, "3x");
+                            ui.radio_value(scale, 4, "4x");
+                            ui.radio_value(scale, 5, "5x");
+                        });
+                    });
+
+                    ui.separator();
+
+                    if ui.button("Controls").clicked() {
+                        self.control_panel.open = !self.control_panel.open;
+                    };
 
                     if ui.button("Sound").clicked() {
                         self.sound_settings.open = !self.sound_settings.open;
@@ -275,16 +323,10 @@ impl App for Kevboy {
             });
         });
 
-        CentralPanel::default().show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                // Game
-                CollapsingHeader::new("Game")
-                    .default_open(true)
-                    .show(ui, |ui| {
-                        image.show_scaled(ui, 3.0);
-                    });
-
-                // Registers + Instructions
+        // Optional information about register state, cartridge type and an "About" section
+        // Can be expanded via the "R" button
+        SidePanel::right("rp").resizable(false).show_animated(ctx, self.right, |ui| {
+            ScrollArea::new([false, true]).show(ui, |ui| {
                 ui.vertical(|ui| {
                     // Registers
                     CollapsingHeader::new("Registers")
@@ -370,6 +412,86 @@ impl App for Kevboy {
                                 ui.end_row();
                             });
                         });
+
+                    ui.add_space(10.0);
+
+                    CollapsingHeader::new("About").default_open(true).show(ui, |ui| {
+                        ui.label("This is a DMG-01 Game Boy emulator. \
+                        It was made both as a learning exercise and because of the desire to create something emulation-related. \
+                        It is not the most accurate emulator out there but it fares relatively well thanks to sub-instruction timing \
+                        for example.");
+
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("Supported MBCs:").strong());
+                            ui.label(RichText::new("MBC0, MBC1, MBC2, MBC3, MBC5").monospace());
+                        });
+
+                        ui.horizontal(|ui| {
+                            ui.image(RetainedImage::from_svg_bytes("github", include_bytes!("../../icon/github-mark-white.svg")).unwrap().texture_id(ctx), Vec2::splat(20.0));
+                            ui.hyperlink("https://github.com/xkevio/kevboy");
+                        });
+
+                        ui.add_space(5.0);
+                    });
+                });
+            });
+        });
+
+        // This panel holds both the game screen and the button group for resuming, pausing or stopping emulation
+        CentralPanel::default().show(ctx, |ui| {
+            ui.vertical(|ui| {
+                ui.add_space(20.0);
+                ui.vertical_centered(|ui| {
+                    ui.set_max_width(self.playback_button_width);
+                    self.playback_button_width = ui
+                        .group(|ui| {
+                            ui.horizontal(|ui| {
+                                if ui.add_sized([25.0, 25.0], Button::new(RichText::new("⏹").size(15.0)))
+                                    .on_hover_text("Stop the emulation and reset the emulator state")
+                                    .clicked()
+                                {
+                                    self.emulator.reset();
+                                    self.frame_buffer.fill(Green::WHITE);
+                                }
+
+                                if ui.add_sized([25.0, 25.0], Button::new(if !self.pause { RichText::new("⏸").size(15.0) } else { RichText::new("▶").size(15.0) }))
+                                    .on_hover_text("Pause / Resume the emulation")
+                                    .clicked()
+                                {
+                                    self.pause = !self.pause;
+                                }
+
+                                // TODO: fast-forward feature
+                                ui.add_enabled(false, Button::new(RichText::new("⏩").size(15.0)).min_size(Vec2::splat(25.0)));
+
+                                ui.separator();
+
+                                if ui.add_sized([25.0, 25.0], SelectableLabel::new(self.right, RichText::new("R").size(15.0)))
+                                    .on_hover_text("Show right sidebar displaying extra information about registers,\nthe cartridge and an about section")
+                                    .clicked()
+                                {
+                                    self.right = !self.right;
+                                }
+                            });
+                        })
+                        .response
+                        .rect
+                        .width();
+                });
+
+                ui.centered_and_justified(|ui| {
+                    if let Some(tex) = &self.texture {
+                        let raw_scale =
+                            (ui.available_width().min(ui.available_height())) / LCD_WIDTH as f32;
+
+                        let scale = match self.integer_scaling {
+                            (false, _) => raw_scale,
+                            (true, 0) => raw_scale.trunc(),
+                            (true, sc) => sc as f32,
+                        };
+
+                        ui.image(tex.id(), tex.size_vec2() * scale);
+                    }
                 });
             });
         });
@@ -437,7 +559,6 @@ impl App for Kevboy {
                     )
                     .with_options(TextureOptions::NEAREST);
 
-                    // image.show_scaled(ui, 3.0);
                     image.show_size(ui, ui.available_size());
                 });
         }
@@ -446,7 +567,7 @@ impl App for Kevboy {
         //      End of UI declarations
         // ----------------------------------
 
-        if !self.emulator.rom.is_empty() {
+        if !self.emulator.rom.is_empty() && !self.pause {
             self.run(ctx);
             ctx.request_repaint();
         }

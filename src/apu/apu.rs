@@ -768,6 +768,7 @@ impl MMIO for APU {
 }
 
 impl APU {
+    #[rustfmt::skip]
     pub fn tick(&mut self, div: u8) {
         self.ch1.duty_cycle();
         self.ch2.duty_cycle();

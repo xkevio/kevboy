@@ -10,7 +10,7 @@ strip = true
 anyhow = "1.0.68"
 eframe = {version = "0.21.3", features = ["persistence"]}
 egui = { version = "0.21.0", features = ["serde"] }
-egui_extras = "0.21.0"
+egui_extras = { version = "0.21.0", features = ["svg"] }
 hashlink = { version = "0.8.1", features = ["serde", "serde_impl"] }
 image = "0.24.5"
 rfd = "0.10.0"
