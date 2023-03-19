@@ -65,7 +65,22 @@ For a full list, see: https://docs.rs/egui/latest/egui/enum.Key.html
 | `dmg-acid2.gb`   | ✅     |
 | `sprite_priority.gb`   | ✅     |
 
-### Timer tests: **all** but `rapid_toggle`.
+#### Timer tests:
+
+| Test                   | Status |
+|------------------------|--------|
+| `div_write.gb`         | ✅      |
+| `tim00.gb`             | ✅      |
+| `tim00_div_trigger.gb` | ✅      |
+| `tim01.gb`             | ✅       |
+| `tim01_div_trigger.gb` | ✅       |
+| `tim10.gb`             | ✅       |
+| `tim10_div_trigger.gb` | ✅       |
+| `tim11.gb`             | ✅       |
+| `tim11_div_trigger.gb` | ✅       |
+| `tima_reload.gb`       | ✅       |
+| `tima_write_reloading.gb`       | ✅       |
+| `tma_write_reloading.gb`       | ✅       |
 
 ## TODO
 
