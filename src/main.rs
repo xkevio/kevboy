@@ -1,8 +1,11 @@
 #![allow(dead_code)]
 // #![windows_subsystem = "windows"]
 
+#[cfg(not(target_arch = "wasm32"))]
 use anyhow::Result;
+#[cfg(not(target_arch = "wasm32"))]
 use eframe::IconData;
+#[cfg(not(target_arch = "wasm32"))]
 use image::{codecs::png::PngDecoder, DynamicImage};
 use ui::ui::Kevboy;
 
@@ -15,6 +18,28 @@ mod mmu;
 mod ppu;
 mod ui;
 
+#[cfg(target_arch = "wasm32")]
+fn main() {
+    // Make sure panics are logged using `console.error`.
+    console_error_panic_hook::set_once();
+
+    // Redirect tracing to console.log and friends:
+    tracing_wasm::set_as_global_default();
+
+    let web_options = eframe::WebOptions::default();
+
+    wasm_bindgen_futures::spawn_local(async {
+        eframe::start_web(
+            "Kevboy", // hardcode it
+            web_options,
+            Box::new(|cc| Box::new(Kevboy::new(cc))),
+        )
+        .await
+        .expect("failed to start eframe");
+    });
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn main() -> Result<()> {
     // Use native vsync for "sync to video" to keep gameboy at 60fps (technically 59.73)
     // Will only work on 60Hz displays for now

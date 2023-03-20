@@ -1,8 +1,12 @@
 use std::{
-    fs::{self, File},
-    io::Write,
     path::PathBuf,
+    sync::mpsc::{Receiver, Sender},
 };
+
+#[cfg(not(target_arch = "wasm32"))]
+use std::fs::{self, File};
+#[cfg(not(target_arch = "wasm32"))]
+use std::io::Write;
 
 use eframe::{
     egui::{
@@ -12,10 +16,7 @@ use eframe::{
     epaint::{Color32, ColorImage},
     App, CreationContext, Frame, Storage,
 };
-use egui::{
-    Grid, ScrollArea, SelectableLabel, SidePanel,
-    TextureHandle, Vec2,
-};
+use egui::{Grid, ScrollArea, SelectableLabel, SidePanel, TextureHandle, Vec2};
 use egui_extras::RetainedImage;
 use hashlink::LinkedHashSet;
 
@@ -60,6 +61,12 @@ pub struct Kevboy {
     right: bool,
 
     integer_scaling: (bool, u8),
+    channels: (Sender<FileType>, Receiver<FileType>),
+}
+
+enum FileType {
+    Rom(Vec<u8>),
+    SaveFile(Vec<u8>),
 }
 
 /// Exposes two functions to create the overarching emulator object
@@ -91,6 +98,7 @@ impl Kevboy {
             right: false,
 
             integer_scaling: (false, 0),
+            channels: std::sync::mpsc::channel(),
         }
     }
 
@@ -121,6 +129,7 @@ impl Kevboy {
             right: false,
 
             integer_scaling: (false, 0),
+            channels: std::sync::mpsc::channel(),
         }
     }
 }
@@ -138,8 +147,38 @@ impl App for Kevboy {
 
     /// UI declarations and functionality, called every frame and also runs the emulator
     fn update(&mut self, ctx: &Context, frame: &mut Frame) {
-        self.history.update(ctx, frame);
-        frame.set_window_title(&format!("Kevboy ({} fps)", self.history.fps()));
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.history.update(ctx, frame);
+            frame.set_window_title(&format!("Kevboy ({} fps)", self.history.fps()));
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.history.update(ctx, frame);
+            web_sys::window()
+                .unwrap()
+                .document()
+                .unwrap()
+                .set_title(&format!("Kevboy ({} fps)", self.history.fps()));
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        loop {
+            match self.channels.1.try_recv() {
+                Ok(msg) => match msg {
+                    FileType::Rom(rom) => {
+                        self.emulator.load_rom(&rom);
+                        self.mem_viewer = MemoryViewer::new_with_memory(&rom, true);
+                    }
+                    FileType::SaveFile(save) => {
+                        self.emulator.load_rom(&self.emulator.rom.clone());
+                        self.emulator.bus.cartridge.load_sram(&save);
+                    }
+                },
+                Err(_) => break,
+            }
+        }
 
         if let Some(tex) = &mut self.texture {
             tex.set(
@@ -168,10 +207,32 @@ impl App for Kevboy {
                     // Inserts path into `recent_roms` and saves it into local storage.
                     // Then, loads the rom into the emulator and inits the memory viewer.
                     if ui.button("Open ROM").clicked() {
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            let async_file = rfd::AsyncFileDialog::new()
+                                .add_filter("Game Boy ROM", &["gb", "bin", "gbc"])
+                                .pick_file();
+
+                            let sender = self.channels.0.clone();
+
+                            let file_future = async move {
+                                let file = async_file.await;
+
+                                if let Some(path) = file {
+                                    let rom = path.read().await;
+                                    sender.send(FileType::Rom(rom)).ok();
+                                }
+                            };
+
+                            wasm_bindgen_futures::spawn_local(file_future);
+                        }
+
+                        #[cfg(not(target_arch = "wasm32"))]
                         let file = rfd::FileDialog::new()
                             .add_filter("Game Boy ROM", &["gb", "bin", "gbc"])
                             .pick_file();
 
+                        #[cfg(not(target_arch = "wasm32"))]
                         if let Some(path) = file {
                             let rom = fs::read(path.clone()).expect("ROM wasn't loaded correctly!");
                             // Limit recent roms list to 10 (gets too cluttered otherwise)
@@ -195,6 +256,7 @@ impl App for Kevboy {
                     // so that all the most recently loaded roms are there. Only displays the file name, not the full path.
                     // Loads the emulator and memory viewer upon clicking a rom.
                     ui.menu_button("Open recent ROMs", |ui| {
+                        #[cfg(not(target_arch = "wasm32"))]
                         for rom_path in self.recent_roms.clone().iter().rev() {
                             if ui.button(rom_path.file_name().unwrap().to_str().unwrap()).clicked() {
                                 let rom = fs::read(rom_path).expect("ROM wasn't loaded correctly!");
@@ -206,6 +268,9 @@ impl App for Kevboy {
                                 ui.close_menu();
                             }
                         }
+
+                        #[cfg(target_arch = "wasm32")]
+                        ui.label("The recent ROM list is not supported on the web version unfortunately.");
                     });
 
                     ui.separator();
@@ -225,16 +290,38 @@ impl App for Kevboy {
                         )
                         .clicked()
                     {
-                        let file = rfd::FileDialog::new()
-                            .add_filter("Save file", &["sav"])
-                            .pick_file();
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            let async_file = rfd::AsyncFileDialog::new()
+                                .add_filter("Save file", &["sav"])
+                                .pick_file();
 
-                        if let Some(path) = file {
-                            let save_file = fs::read(path).expect("Save file wasn't loaded correctly!");
+                            let sender = self.channels.0.clone();
 
-                            // restart ROM so that the save can be applied before it's too late
-                            self.emulator.load_rom(&self.emulator.rom.clone());
-                            self.emulator.bus.cartridge.load_sram(&save_file);
+                            let file_future = async move {
+                                let file = async_file.await;
+
+                                if let Some(path) = file {
+                                    let save_file = path.read().await;
+                                    sender.send(FileType::SaveFile(save_file)).ok();
+                                }
+                            };
+
+                            wasm_bindgen_futures::spawn_local(file_future);
+                        }
+
+                        #[cfg(not(target_arch = "wasm32"))] {
+                            let file = rfd::FileDialog::new()
+                                .add_filter("Save file", &["sav"])
+                                .pick_file();
+
+                            if let Some(path) = file {
+                                let save_file = fs::read(path).expect("Save file wasn't loaded correctly!");
+
+                                // restart ROM so that the save can be applied before it's too late
+                                self.emulator.load_rom(&self.emulator.rom.clone());
+                                self.emulator.bus.cartridge.load_sram(&save_file);
+                            }
                         }
                     }
 
@@ -251,17 +338,47 @@ impl App for Kevboy {
                         )
                         .clicked()
                     {
-                        let file = rfd::FileDialog::new().add_filter("Save file", &["sav"]).save_file();
-                        let sram = self.emulator.bus.cartridge.dump_sram();
+                        #[cfg(target_arch = "wasm32")] {
+                            let sram = self.emulator.bus.cartridge.dump_sram();
 
-                        if let Some(f) = file {
-                            let save_file = File::create(f);
-                            if let Ok(mut sf) = save_file {
-                                if let Some(sram) = sram {
-                                    sf.write_all(&sram).unwrap();
-                                } else {
-                                    rfd::MessageDialog::new().set_title("No saving was done!")
-                                        .set_description("Nothing was saved as this cartridge does not support external RAM.").show();
+                            if let Some(sram) = sram {
+                                let js_arr = js_sys::Uint8Array::new_with_length(sram.len() as u32);
+                                js_arr.copy_from(&sram);
+
+                                let file = web_sys::File::new_with_u8_array_sequence_and_options(
+                                    &js_arr.into(),
+                                    &format!("{}.sav", self.emulator.bus.cartridge.title),
+                                    web_sys::FilePropertyBag::new().type_("application/octet-stream"),
+                                )
+                                .unwrap();
+
+                                let blob = web_sys::Blob::from(file);
+                                let object_url = web_sys::Url::create_object_url_with_blob(&blob);
+
+                                if let Ok(url) = object_url {
+                                    web_sys::window().unwrap().open_with_url(&url).unwrap();
+                                }
+                            } else {
+                                rfd::MessageDialog::new()
+                                    .set_title("No saving was done!")
+                                    .set_description("Nothing was saved as this cartridge does not support external RAM.")
+                                    .show();
+                            }
+                        }
+
+                        #[cfg(not(target_arch = "wasm32"))] {
+                            let file = rfd::FileDialog::new().add_filter("Save file", &["sav"]).save_file();
+                            let sram = self.emulator.bus.cartridge.dump_sram();
+
+                            if let Some(f) = file {
+                                let save_file = File::create(f);
+                                if let Ok(mut sf) = save_file {
+                                    if let Some(sram) = sram {
+                                        sf.write_all(&sram).unwrap();
+                                    } else {
+                                        rfd::MessageDialog::new().set_title("No saving was done!")
+                                            .set_description("Nothing was saved as this cartridge does not support external RAM.").show();
+                                    }
                                 }
                             }
                         }
@@ -427,7 +544,12 @@ impl App for Kevboy {
                         });
 
                         ui.horizontal(|ui| {
-                            ui.image(RetainedImage::from_svg_bytes("github", include_bytes!("../../icon/github-mark-white.svg")).unwrap().texture_id(ctx), Vec2::splat(20.0));
+                            ui.image(
+                                RetainedImage::from_svg_bytes("github", include_bytes!("../../icon/github-mark-white.svg"))
+                                    .unwrap()
+                                    .texture_id(ctx),
+                                Vec2::splat(20.0),
+                            );
                             ui.hyperlink("https://github.com/xkevio/kevboy");
                         });
 
@@ -446,7 +568,8 @@ impl App for Kevboy {
                     self.playback_button_width = ui
                         .group(|ui| {
                             ui.horizontal(|ui| {
-                                if ui.add_sized([25.0, 25.0], Button::new(RichText::new("⏹").size(15.0)))
+                                if ui
+                                    .add_sized([25.0, 25.0], Button::new(RichText::new("⏹").size(15.0)))
                                     .on_hover_text("Stop the emulation and reset the emulator state")
                                     .clicked()
                                 {
@@ -454,24 +577,35 @@ impl App for Kevboy {
                                     self.frame_buffer.fill(Green::WHITE);
                                 }
 
-                                if ui.add_sized([25.0, 25.0], Button::new(if !self.pause { RichText::new("⏸").size(15.0) } else { RichText::new("▶").size(15.0) }))
+                                if ui
+                                    .add_sized(
+                                        [25.0, 25.0],
+                                        Button::new(if !self.pause {
+                                            RichText::new("⏸").size(15.0)
+                                        } else {
+                                            RichText::new("▶").size(15.0)
+                                        }),
+                                    )
                                     .on_hover_text("Pause / Resume the emulation")
                                     .clicked()
                                 {
                                     self.pause = !self.pause;
                                 }
 
-                                // TODO: fast-forward feature
-                                ui.add_enabled(false, Button::new(RichText::new("⏩").size(15.0)).min_size(Vec2::splat(25.0)));
+                            // TODO: fast-forward feature
+                            ui.add_enabled(
+                                false,
+                                Button::new(RichText::new("⏩").size(15.0)).min_size(Vec2::splat(25.0)),
+                            );
 
-                                ui.separator();
+                            ui.separator();
 
-                                if ui.add_sized([25.0, 25.0], SelectableLabel::new(self.right, RichText::new("R").size(15.0)))
-                                    .on_hover_text("Show right sidebar displaying extra information about registers,\nthe cartridge and an about section")
-                                    .clicked()
-                                {
-                                    self.right = !self.right;
-                                }
+                            if ui.add_sized([25.0, 25.0], SelectableLabel::new(self.right, RichText::new("R").size(15.0)))
+                                .on_hover_text("Show right sidebar displaying extra information about registers,\nthe cartridge and an about section")
+                                .clicked()
+                            {
+                                self.right = !self.right;
+                            }
                             });
                         })
                         .response

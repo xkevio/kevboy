@@ -1,0 +1,5 @@
+[build]
+filehash = false
+
+[tools]
+wasm-bindgen = "0.2.84"

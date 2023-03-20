@@ -3,8 +3,8 @@ name = "kevboy"
 version = "0.1.0"
 edition = "2021"
 
-[profile.release]
-strip = true
+# [profile.release]
+# strip = true
 
 [dependencies]
 anyhow = "1.0.68"
@@ -14,9 +14,19 @@ egui_extras = { version = "0.21.0", features = ["svg"] }
 hashlink = { version = "0.8.1", features = ["serde", "serde_impl"] }
 image = "0.24.5"
 rfd = "0.10.0"
-rodio = "0.17.0"
+rodio = { version = "0.17.0", features = ["wasm-bindgen"] }
 serde = "1.0.152"
 
 [dev-dependencies]
 log = "0.4.17"
 simple_logger = "2.3.0"
+
+# web:
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1.6"
+tracing-wasm = "0.2"
+wasm-bindgen = "0.2.84"
+wasm-bindgen-futures = "0.4.33"
+web-sys = { version = "0.3.60", features = ["console", "Url", "Blob", "BlobPropertyBag", "FilePropertyBag"] }
+wasm-timer = "0.2.5"
+js-sys = "0.3.60"
