@@ -345,8 +345,11 @@ impl App for Kevboy {
                                 let js_arr = js_sys::Uint8Array::new_with_length(sram.len() as u32);
                                 js_arr.copy_from(&sram);
 
-                                let file = web_sys::File::new_with_u8_array_sequence_and_options(
-                                    &js_arr.into(),
+                                let byte_seq_arr = js_sys::Array::new_with_length(1);
+                                byte_seq_arr.set(0, js_arr.into());
+
+                                let file = web_sys::File::new_with_buffer_source_sequence_and_options(
+                                    &byte_seq_arr.into(),
                                     &format!("{}.sav", self.emulator.bus.cartridge.title),
                                     web_sys::FilePropertyBag::new().type_("application/octet-stream"),
                                 )
