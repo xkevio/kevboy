@@ -12,10 +12,7 @@ use eframe::{
     epaint::{Color32, ColorImage},
     App, CreationContext, Frame, Storage,
 };
-use egui::{
-    Grid, ScrollArea, SelectableLabel, SidePanel,
-    TextureHandle, Vec2,
-};
+use egui::{Grid, ScrollArea, SelectableLabel, SidePanel, TextureHandle, Vec2};
 use egui_extras::RetainedImage;
 use hashlink::LinkedHashSet;
 
@@ -156,6 +153,26 @@ impl App for Kevboy {
                 TextureOptions::NEAREST,
             ));
         }
+
+        // Load rom file when dropped on top of the GUI
+        ctx.input(|c| {
+            let dropped_files = &c.raw.dropped_files;
+            let first_rom = dropped_files
+                .iter()
+                .find(|file| {
+                    file.path.as_ref().is_some_and(|p| {
+                        let extension = p.extension().unwrap();
+                        extension == "gb" || extension == "gbc"
+                    })
+                })
+                .cloned();
+
+            if let Some(file) = first_rom {
+                let rom = fs::read(file.path.clone().unwrap()).unwrap();
+                self.emulator.load_rom(&rom);
+                self.mem_viewer = MemoryViewer::new_with_memory(&rom, true);
+            }
+        });
 
         // ----------------------------------
         //      Start of UI declarations
