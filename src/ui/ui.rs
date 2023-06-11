@@ -180,6 +180,24 @@ impl App for Kevboy {
             }
         }
 
+        // Load rom file when dropped on top of the GUI (wasm version)
+        ctx.input(|c| {
+            let dropped_files = &c.raw.dropped_files;
+            let first_rom = dropped_files
+                .iter()
+                .find(|file| {
+                    let extension = file.name.clone();
+                    extension.ends_with(".gb") || extension.ends_with(".gbc")
+                })
+                .cloned();
+
+            if let Some(file) = first_rom {
+                let rom = file.bytes.unwrap();
+                self.emulator.load_rom(&rom);
+                self.mem_viewer = MemoryViewer::new_with_memory(&rom, true);
+            }
+        });
+
         if let Some(tex) = &mut self.texture {
             tex.set(
                 ColorImage {
