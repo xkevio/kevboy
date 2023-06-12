@@ -12,6 +12,7 @@ pub struct Emulator {
     pub bus: Bus,
     pub rom: Vec<u8>,
     pub cycle_count: u16,
+    cgb: bool,
 }
 
 impl Emulator {
@@ -21,6 +22,7 @@ impl Emulator {
             bus: Bus::new(),
             rom: Vec::new(),
             cycle_count: 0,
+            cgb: false,
         }
     }
 
@@ -55,6 +57,8 @@ impl Emulator {
             .or_else(|_| std::str::from_utf8(&rom[0x0134..=0x0142]))
             .or_else(|_| std::str::from_utf8(&rom[0x0134..=0x013E]))
             .unwrap();
+
+        self.cgb = rom[0x0143] == 0x80 || rom[0x0143] == 0xC0;
 
         self.bus.cartridge = Cartridge::new(cartridge_type, title);
         self.rom = rom.to_vec(); // TODO: redundant?
@@ -147,5 +151,10 @@ impl Emulator {
         self.bus = Bus::new();
         self.rom = Vec::new();
         self.cycle_count = 0;
+        self.cgb = false;
+    }
+
+    pub fn is_cgb(&self) -> bool {
+        self.cgb
     }
 }
