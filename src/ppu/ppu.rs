@@ -37,6 +37,10 @@ pub struct PPU {
     /// Raw 256x256 background for debugging purposes
     pub raw_frame: Vec<ScreenColor>,
 
+    /// Color RAM for CGB mode, stored as RGB555
+    cram: [u8; 64],
+    bgpi: u8,
+
     /// Contains pixels for the current line
     current_line: Vec<ScreenColor>,
     /// Contains up to 10 sprites that will be rendered this line
@@ -72,6 +76,11 @@ impl MMIO for PPU {
             0xFF49 => self.regs.opb1,
             0xFF4A => self.regs.wy,
             0xFF4B => self.regs.wx,
+            0xFF68 => self.bgpi,
+            0xFF69 => {
+                let address = self.bgpi & 0x20;
+                self.cram[address as usize]
+            },
             _ => unreachable!(),
         }
     }
@@ -135,6 +144,16 @@ impl MMIO for PPU {
             0xFF49 => self.regs.opb1 = value,
             0xFF4A => self.regs.wy = value,
             0xFF4B => self.regs.wx = value,
+            0xFF68 => self.bgpi = value,
+            0xFF69 => {
+                let auto_inc = (self.bgpi & 0x80) >> 6 != 0;
+                let address = self.bgpi & 0x20;
+
+                if auto_inc {
+                    self.bgpi = (self.bgpi & 0x40) | (address + 1);
+                }
+                self.cram[address as usize] = value;
+            },
             _ => unreachable!(),
         }
     }
@@ -153,6 +172,8 @@ impl PPU {
                 .unwrap(),
 
             raw_frame: vec![ScreenColor::White; 256 * 256],
+            cram: [0xFF; 64],
+            bgpi: 0xC8,
 
             current_line: Vec::new(),
             current_sprites: Vec::new(),
