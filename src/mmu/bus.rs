@@ -10,8 +10,8 @@ use crate::{
 pub struct Bus {
     pub cartridge: Cartridge,
 
-    pub vram: [u8; 0x2000],
-    pub wram: [u8; 0x2000],
+    pub vram: [[u8; 0x2000]; 2],
+    pub wram: [[u8; 0x1000]; 8],
     pub oam: [u8; 0xA0],
 
     pub joypad: Joypad,
@@ -25,6 +25,8 @@ pub struct Bus {
     pub interrupt_handler: InterruptHandler,
 
     disable_boot_rom: u8,
+    vbk: u8,
+    svbk: u8,
 }
 
 // ----------------------------
@@ -32,6 +34,7 @@ pub struct Bus {
 // ----------------------------
 
 impl MMIO for Bus {
+    #[rustfmt::skip]
     fn read(&mut self, address: u16) -> u8 {
         if self.ppu.get_dma_state() != DMATransferState::Transferring {
             self.tick(1);
@@ -39,9 +42,18 @@ impl MMIO for Bus {
 
         match address {
             0x0000..=0x7FFF => self.cartridge.read(address),
-            0x8000..=0x9FFF => self.vram[address as usize - 0x8000],
+            0x8000..=0x9FFF => self.vram[(self.vbk & 1) as usize][address as usize - 0x8000],
             0xA000..=0xBFFF => self.cartridge.read(address),
-            0xC000..=0xFDFF => self.wram[address as usize & 0x1FFF],
+            0xC000..=0xCFFF => self.wram[0][address as usize & 0x0FFF],
+            0xD000..=0xFDFF => {
+                // Echo RAM.
+                if address > 0xDFFF && address < 0xF000 {
+                    return self.wram[0][address as usize & 0x0FFF];
+                }
+
+                let wram_bank = if self.svbk & 0x07 == 0 { 1 } else { (self.svbk & 0x07) as usize };
+                self.wram[wram_bank][address as usize & 0x0FFF]
+            }
             0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00],
             0xFEA0..=0xFEFF => 0xFF, // usage of this area not prohibited, may trigger oam corruption
             0xFF00..=0xFF7F => match address {
@@ -51,7 +63,9 @@ impl MMIO for Bus {
                 0xFF0F => self.interrupt_handler.intf,
                 0xFF10..=0xFF3F => self.apu.read(address),
                 0xFF40..=0xFF4B => self.ppu.read(address),
+                0xFF4F => self.vbk,
                 0xFF50 => self.disable_boot_rom,
+                0xFF70 => self.svbk,
                 _ => 0xFF,
             },
             0xFF80..=0xFFFE => self.hram[address as usize - 0xFF80],
@@ -59,6 +73,7 @@ impl MMIO for Bus {
         }
     }
 
+    #[rustfmt::skip]
     fn write(&mut self, address: u16, value: u8) {
         if self.ppu.get_dma_state() != DMATransferState::Transferring {
             self.tick(1);
@@ -66,9 +81,18 @@ impl MMIO for Bus {
 
         match address {
             0x0000..=0x7FFF => self.cartridge.write(address, value),
-            0x8000..=0x9FFF => self.vram[address as usize - 0x8000] = value,
+            0x8000..=0x9FFF => self.vram[(self.vbk & 1) as usize][address as usize - 0x8000] = value,
             0xA000..=0xBFFF => self.cartridge.write(address, value),
-            0xC000..=0xFDFF => self.wram[address as usize & 0x1FFF] = value,
+            0xC000..=0xCFFF => self.wram[0][address as usize & 0x0FFF] = value,
+            0xD000..=0xFDFF => {
+                // Echo RAM.
+                if address > 0xDFFF && address < 0xF000 {
+                    self.wram[0][address as usize & 0x0FFF] = value;
+                } else {
+                    let wram_bank = if self.svbk & 0x07 == 0 { 1 } else { (self.svbk & 0x07) as usize };
+                    self.wram[wram_bank][address as usize & 0x0FFF] = value;
+                }
+            }
             0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00] = value,
             0xFEA0..=0xFEFF => {} // not usable area
             0xFF00..=0xFF7F => match address {
@@ -81,6 +105,8 @@ impl MMIO for Bus {
                     self.ppu
                         .write_with_callback(address, value, &mut self.interrupt_handler)
                 }
+                0xFF4F => self.vbk = 0xFE | (value & 1),
+                0xFF70 => self.svbk = 0xF8 | (value & 0x07),
                 _ => {}
             },
             0xFF80..=0xFFFE => self.hram[address as usize - 0xFF80] = value,
@@ -98,8 +124,8 @@ impl Bus {
         Self {
             cartridge: Cartridge::default(),
 
-            vram: [0xFF; 0x2000],
-            wram: [0xFF; 0x2000],
+            vram: [[0xFF; 0x2000]; 2],
+            wram: [[0xFF; 0x1000]; 8],
             oam: [0xFF; 0xA0],
 
             joypad: Joypad::default(),
@@ -112,6 +138,8 @@ impl Bus {
             hram: [0xFF; 0xAF],
             interrupt_handler: InterruptHandler::default(),
             disable_boot_rom: 0xFF, // not writable once unmapped
+            vbk: 0xFF,
+            svbk: 0xFF,
         }
     }
 
@@ -138,8 +166,11 @@ impl Bus {
 
         // PPU ticks 4 times per M-cycle
         for _ in 0..(cycles_passed * 4) {
-            self.ppu
-                .tick(&self.vram, &self.oam, &mut self.interrupt_handler);
+            self.ppu.tick(
+                &self.vram[0], // TODO: pass whole vram, ppu decides bank
+                &self.oam,
+                &mut self.interrupt_handler,
+            );
         }
 
         // DMA is delayed one cycle -- write -> nothing -> DMA

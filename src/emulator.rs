@@ -5,6 +5,7 @@ use crate::cartridge::mbc::mbc3::MBC3;
 use crate::cartridge::mbc::mbc5::MBC5;
 use crate::cartridge::mbc::no_mbc::NoMBC;
 use crate::cpu::cpu::CPU;
+use crate::cpu::registers::Registers;
 use crate::mmu::bus::Bus;
 
 pub struct Emulator {
@@ -59,10 +60,14 @@ impl Emulator {
             .unwrap();
 
         self.cgb = rom[0x0143] == 0x80 || rom[0x0143] == 0xC0;
-
         self.bus.cartridge = Cartridge::new(cartridge_type, title);
         self.rom = rom.to_vec(); // TODO: redundant?
-        self.cpu.registers.load_header_checksum(rom[0x014D]);
+
+        if self.cgb {
+            self.cpu.registers = Registers::new_cgb();
+        } else {
+            self.cpu.registers = Registers::new_dmg(rom[0x014D]);
+        }
     }
 
     /// Step emulator by ticking CPU, advancing it one instruction and returning
