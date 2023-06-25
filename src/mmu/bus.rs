@@ -166,11 +166,8 @@ impl Bus {
 
         // PPU ticks 4 times per M-cycle
         for _ in 0..(cycles_passed * 4) {
-            self.ppu.tick(
-                &self.vram[0], // TODO: pass whole vram, ppu decides bank
-                &self.oam,
-                &mut self.interrupt_handler,
-            );
+            self.ppu
+                .tick(&self.vram, &self.oam, &mut self.interrupt_handler);
         }
 
         // DMA is delayed one cycle -- write -> nothing -> DMA

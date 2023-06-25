@@ -625,6 +625,7 @@ impl Kevboy {
                 ScreenColor::LightGray => self.palette_picker.colors["Light Gray"],
                 ScreenColor::Gray => self.palette_picker.colors["Gray"],
                 ScreenColor::Black => self.palette_picker.colors["Black"],
+                ScreenColor::FullColor(c) => c,
             })
             .collect();
 
@@ -640,6 +641,7 @@ impl Kevboy {
                 ScreenColor::LightGray => self.palette_picker.colors["Light Gray"],
                 ScreenColor::Gray => self.palette_picker.colors["Gray"],
                 ScreenColor::Black => self.palette_picker.colors["Black"],
+                ScreenColor::FullColor(c) => c,
             })
             .collect();
 

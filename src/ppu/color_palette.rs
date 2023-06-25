@@ -2,6 +2,8 @@ use eframe::epaint::Color32;
 
 /// Palette enum with the according palette register as the associated value.
 ///
+/// In CGB mode, `BGP` represents a value between 0 and 7.
+///
 /// `OBP` shall be used for both obp0 and obp1 as long as the correct palette is passed.
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Copy)]
@@ -19,6 +21,7 @@ pub enum ScreenColor {
     LightGray,
     Gray,
     Black,
+    FullColor(Color32),
 }
 
 // Pre-defined color palettes based on associated constants
@@ -50,21 +53,27 @@ impl Chocolate {
 }
 
 /// Takes the color value byte and transforms into the correct color based on the palette register
-pub(super) fn convert_to_color(value: u8, palette: Palette) -> ScreenColor {
+pub(super) fn convert_to_color(value: u8, palette: Palette, cgb: bool, cram: &[u8]) -> ScreenColor {
     match palette {
-        Palette::BGP(bgp) => match value {
+        Palette::BGP(bgp) if !cgb => match value {
             0b00 => color_from_value(bgp & 0b11),
             0b01 => color_from_value((bgp & 0b1100) >> 2),
             0b10 => color_from_value((bgp & 0b110000) >> 4),
             0b11 => color_from_value((bgp & 0b11000000) >> 6),
             _ => unreachable!(),
         },
+        Palette::BGP(bgp) if cgb => {
+            let palette = (bgp * 8 + value * 2) as usize;
+            let color_bytes = u16::from_le_bytes([cram[palette], cram[palette + 1]]);
+            ScreenColor::FullColor(rgb555_to_color(color_bytes))
+        }
         Palette::OBP(obp) => match value {
             0b01 => color_from_value((obp & 0b1100) >> 2),
             0b10 => color_from_value((obp & 0b110000) >> 4),
             0b11 => color_from_value((obp & 0b11000000) >> 6),
             _ => unreachable!(),
         },
+        _ => unreachable!(),
     }
 }
 
@@ -76,4 +85,16 @@ fn color_from_value(value: u8) -> ScreenColor {
         0b11 => ScreenColor::Black,
         _ => unreachable!(),
     }
+}
+
+fn rgb555_to_color(rgb: u16) -> Color32 {
+    let red = (rgb & 0x1F) as u8;
+    let green = ((rgb >> 5) & 0x1F) as u8;
+    let blue: u8 = ((rgb >> 10) & 0x1F) as u8;
+
+    Color32::from_rgb(
+        (red << 3) | (red >> 2),
+        (green << 3) | (green >> 2),
+        (blue << 3) | (blue >> 2),
+    )
 }

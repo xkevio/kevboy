@@ -4,6 +4,8 @@ use crate::{
     ppu::{color_palette::*, ppu_regs::PPURegisters, sprite, sprite::Sprite},
 };
 
+use super::tile_attributes::TileAttribute;
+
 // --------- PPU constants ---------
 pub const LCD_WIDTH: usize = 160;
 pub const LCD_HEIGHT: usize = 144;
@@ -59,6 +61,7 @@ pub struct PPU {
     dma_state: DMATransferState,
 
     internal_window_line: u8,
+    cgb: bool,
 }
 
 impl MMIO for PPU {
@@ -78,9 +81,9 @@ impl MMIO for PPU {
             0xFF4B => self.regs.wx,
             0xFF68 => self.bgpi,
             0xFF69 => {
-                let address = self.bgpi & 0x20;
+                let address = self.bgpi & 0x3F;
                 self.cram[address as usize]
-            },
+            }
             _ => unreachable!(),
         }
     }
@@ -146,14 +149,14 @@ impl MMIO for PPU {
             0xFF4B => self.regs.wx = value,
             0xFF68 => self.bgpi = value,
             0xFF69 => {
-                let auto_inc = (self.bgpi & 0x80) >> 6 != 0;
-                let address = self.bgpi & 0x20;
+                let auto_inc = (self.bgpi & 0x80) >> 7 != 0;
+                let address = self.bgpi & 0x3F;
 
                 if auto_inc {
-                    self.bgpi = (self.bgpi & 0x40) | (address + 1);
+                    self.bgpi += 1;
                 }
                 self.cram[address as usize] = value;
-            },
+            }
             _ => unreachable!(),
         }
     }
@@ -186,13 +189,19 @@ impl PPU {
             dma_state: DMATransferState::Disabled,
 
             internal_window_line: 0,
+            cgb: false,
         }
     }
 
     // Should tick 4 times per m-cycle
     // 456 clocks per scanline (see lengths below)
     // 80 (Mode2) - 172 (Mode3) - 204 (HBlank) - VBlank
-    pub fn tick(&mut self, vram: &[u8], oam: &[u8], interrupt_handler: &mut InterruptHandler) {
+    pub fn tick(
+        &mut self,
+        vram: &[[u8; 0x2000]],
+        oam: &[u8],
+        interrupt_handler: &mut InterruptHandler,
+    ) {
         if self.regs.is_lcd_on() {
             // LY = 0 after lcd turn on: special behavior
             match &self.current_mode {
@@ -294,6 +303,10 @@ impl PPU {
         }
     }
 
+    pub fn enable_cgb(&mut self) {
+        self.cgb = true;
+    }
+
     // --------------------------
     //          DMA
     // --------------------------
@@ -328,7 +341,7 @@ impl PPU {
     // -------- DEBUGGING STUFF --------
 
     /// Dumps 256x256 BG map for the vram viewer
-    fn dump_bg_map(&mut self, vram: &[u8]) {
+    fn dump_bg_map(&mut self, vram: &[[u8; 0x2000]]) {
         let mut current_line: Vec<ScreenColor> = Vec::with_capacity(256);
 
         for i in 0..=255 {
@@ -357,14 +370,14 @@ impl PPU {
 
     // -------- ACTUAL RENDERING --------
 
-    fn get_current_line(&self, vram: &[u8]) -> Vec<ScreenColor> {
+    fn get_current_line(&self, vram: &[[u8; 0x2000]]) -> Vec<ScreenColor> {
         let bg_win_line = self.get_bg_win_line(vram);
         let sprite_line = self.get_sprite_line(vram, &bg_win_line);
 
         sprite_line
     }
 
-    fn get_bg_win_line(&self, vram: &[u8]) -> Vec<ScreenColor> {
+    fn get_bg_win_line(&self, vram: &[[u8; 0x2000]]) -> Vec<ScreenColor> {
         let mut current_line: Vec<ScreenColor> = Vec::with_capacity(256);
 
         if self.regs.is_bg_enabled() {
@@ -427,8 +440,13 @@ impl PPU {
     // Sprites
     // -------------------------
 
-    fn get_sprite_line(&self, vram: &[u8], current_line: &[ScreenColor]) -> Vec<ScreenColor> {
+    fn get_sprite_line(
+        &self,
+        vram: &[[u8; 0x2000]],
+        current_line: &[ScreenColor],
+    ) -> Vec<ScreenColor> {
         let mut current_line: Vec<ScreenColor> = Vec::from(current_line);
+        let vram = vram[0]; // TODO
 
         if self.regs.is_obj_enabled() {
             for sprite in self.current_sprites.iter().rev() {
@@ -490,10 +508,17 @@ impl PPU {
                     let x = (real_x_pos + x_flip) as usize;
                     if (msb << 1 | lsb) != 0 {
                         let color = if sprite.is_obj_prio() {
-                            convert_to_color(msb << 1 | lsb, palette)
+                            convert_to_color(msb << 1 | lsb, palette, self.cgb, &self.cram)
                         } else {
-                            if current_line[x] == convert_to_color(0, Palette::BGP(self.regs.bgp)) {
-                                convert_to_color(msb << 1 | lsb, palette)
+                            if current_line[x]
+                                == convert_to_color(
+                                    0,
+                                    Palette::BGP(self.regs.bgp),
+                                    self.cgb,
+                                    &self.cram,
+                                )
+                            {
+                                convert_to_color(msb << 1 | lsb, palette, self.cgb, &self.cram)
                             } else {
                                 current_line[x]
                             }
@@ -513,46 +538,62 @@ impl PPU {
     /// Can't use it for sprites because of the obj prio bit and flip bits
     fn get_tile_row(
         &self,
-        vram: &[u8],
+        vram: &[[u8; 0x2000]],
         unsigned_addressing: bool,
         index: usize,
         y: u8,
     ) -> [ScreenColor; 8] {
         let mut current_line: [ScreenColor; 8] = [ScreenColor::White; 8];
 
-        let line_index = (vram[index] as usize) * 16;
+        let tile_attribute = TileAttribute::from(vram[1][index]);
+        let vbk = if self.cgb {
+            tile_attribute.vram_bank as usize
+        } else {
+            0
+        };
+        let bgp = if self.cgb {
+            tile_attribute.bgp
+        } else {
+            self.regs.bgp
+        };
+
+        let line_index = (vram[vbk][index] as usize) * 16;
         let ly_bytes = (y % 8) as usize;
 
         if unsigned_addressing {
-            let first_byte = vram[line_index + (2 * ly_bytes)];
-            let second_byte = vram[line_index + (2 * ly_bytes + 1)];
+            let first_byte = vram[vbk][line_index + (2 * ly_bytes)];
+            let second_byte = vram[vbk][line_index + (2 * ly_bytes + 1)];
 
             for i in (0..8).rev() {
                 let lsb = (first_byte & (1 << i)) >> i;
                 let msb = (second_byte & (1 << i)) >> i;
+                let h_index = if tile_attribute.h_flip && self.cgb { i } else { 7 - i };
 
-                current_line[7 - i] = convert_to_color(msb << 1 | lsb, Palette::BGP(self.regs.bgp));
+                current_line[h_index] =
+                    convert_to_color(msb << 1 | lsb, Palette::BGP(bgp), self.cgb, &self.cram);
             }
         } else {
-            let first_byte = if vram[index] <= 127 {
-                vram[(0x9000 - 0x8000) + line_index + (2 * ly_bytes)]
+            let first_byte = if vram[vbk][index] <= 127 {
+                vram[vbk][(0x9000 - 0x8000) + line_index + (2 * ly_bytes)]
             } else {
-                let line_index = ((vram[index] as usize) % 128) * 16;
-                vram[(0x8800 - 0x8000) + line_index + (2 * ly_bytes)]
+                let line_index = ((vram[vbk][index] as usize) % 128) * 16;
+                vram[vbk][(0x8800 - 0x8000) + line_index + (2 * ly_bytes)]
             };
 
-            let second_byte = if vram[index] <= 127 {
-                vram[(0x9000 - 0x8000) + line_index + (2 * ly_bytes + 1)]
+            let second_byte = if vram[vbk][index] <= 127 {
+                vram[vbk][(0x9000 - 0x8000) + line_index + (2 * ly_bytes + 1)]
             } else {
-                let line_index = ((vram[index] as usize) % 128) * 16;
-                vram[(0x8800 - 0x8000) + line_index + (2 * ly_bytes + 1)]
+                let line_index = ((vram[vbk][index] as usize) % 128) * 16;
+                vram[vbk][(0x8800 - 0x8000) + line_index + (2 * ly_bytes + 1)]
             };
 
             for i in (0..8).rev() {
                 let lsb = (first_byte & (1 << i)) >> i;
                 let msb = (second_byte & (1 << i)) >> i;
+                let h_index = if tile_attribute.h_flip && self.cgb { i } else { 7 - i };
 
-                current_line[7 - i] = convert_to_color(msb << 1 | lsb, Palette::BGP(self.regs.bgp));
+                current_line[h_index] =
+                    convert_to_color(msb << 1 | lsb, Palette::BGP(bgp), self.cgb, &self.cram);
             }
         }
 

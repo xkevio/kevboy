@@ -65,6 +65,7 @@ impl Emulator {
 
         if self.cgb {
             self.cpu.registers = Registers::new_cgb();
+            self.bus.ppu.enable_cgb();
         } else {
             self.cpu.registers = Registers::new_dmg(rom[0x014D]);
         }
