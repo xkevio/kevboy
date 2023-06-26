@@ -67,12 +67,21 @@ pub(super) fn convert_to_color(value: u8, palette: Palette, cgb: bool, cram: &[u
             let color_bytes = u16::from_le_bytes([cram[palette], cram[palette + 1]]);
             ScreenColor::FullColor(rgb555_to_color(color_bytes))
         }
-        Palette::OBP(obp) => match value {
+        Palette::OBP(obp) if !cgb => match value {
             0b01 => color_from_value((obp & 0b1100) >> 2),
             0b10 => color_from_value((obp & 0b110000) >> 4),
             0b11 => color_from_value((obp & 0b11000000) >> 6),
             _ => unreachable!(),
         },
+        Palette::OBP(obp) if cgb => {
+            if value == 0 {
+                return ScreenColor::FullColor(Color32::TRANSPARENT);
+            }
+
+            let palette = (obp * 8 + value * 2) as usize;
+            let color_bytes = u16::from_le_bytes([cram[palette], cram[palette + 1]]);
+            ScreenColor::FullColor(rgb555_to_color(color_bytes))
+        }
         _ => unreachable!(),
     }
 }

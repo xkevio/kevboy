@@ -40,8 +40,11 @@ pub struct PPU {
     pub raw_frame: Vec<ScreenColor>,
 
     /// Color RAM for CGB mode, stored as RGB555
-    cram: [u8; 64],
+    bg_cram: [u8; 64],
     bgpi: u8,
+
+    obj_cram: [u8; 64],
+    obpi: u8,
 
     /// Contains pixels for the current line
     current_line: Vec<ScreenColor>,
@@ -82,7 +85,12 @@ impl MMIO for PPU {
             0xFF68 => self.bgpi,
             0xFF69 => {
                 let address = self.bgpi & 0x3F;
-                self.cram[address as usize]
+                self.bg_cram[address as usize]
+            }
+            0xFF6A => self.obpi,
+            0xFF6B => {
+                let address = self.obpi & 0x3F;
+                self.obj_cram[address as usize]
             }
             _ => unreachable!(),
         }
@@ -155,7 +163,17 @@ impl MMIO for PPU {
                 if auto_inc {
                     self.bgpi += 1;
                 }
-                self.cram[address as usize] = value;
+                self.bg_cram[address as usize] = value;
+            }
+            0xFF6A => self.obpi = value,
+            0xFF6B => {
+                let auto_inc = (self.obpi & 0x80) >> 7 != 0;
+                let address = self.obpi & 0x3F;
+
+                if auto_inc {
+                    self.obpi += 1;
+                }
+                self.obj_cram[address as usize] = value;
             }
             _ => unreachable!(),
         }
@@ -175,8 +193,11 @@ impl PPU {
                 .unwrap(),
 
             raw_frame: vec![ScreenColor::White; 256 * 256],
-            cram: [0xFF; 64],
+            bg_cram: [0xFF; 64],
             bgpi: 0xC8,
+
+            obj_cram: [0xFF; 64],
+            obpi: 0xD0,
 
             current_line: Vec::new(),
             current_sprites: Vec::new(),
@@ -446,10 +467,10 @@ impl PPU {
         current_line: &[ScreenColor],
     ) -> Vec<ScreenColor> {
         let mut current_line: Vec<ScreenColor> = Vec::from(current_line);
-        let vram = vram[0]; // TODO
 
         if self.regs.is_obj_enabled() {
             for sprite in self.current_sprites.iter().rev() {
+                let vbk = sprite.vbk() as usize;
                 let upper_tile = sprite.tile_index & 0xFE;
                 let lower_tile = sprite.tile_index | 0x1;
 
@@ -477,22 +498,26 @@ impl PPU {
                 let sprite_tile = (current_tile as usize) * 16;
                 let ly_bytes = (real_y_pos.abs_diff(self.regs.ly as i16) % 8) as usize;
 
-                let palette = if sprite.get_obp_num() == 0 {
-                    Palette::OBP(self.regs.opb0)
+                let palette = if !self.cgb {
+                    if sprite.get_dmg_obp_num() == 0 {
+                        Palette::OBP(self.regs.opb0)
+                    } else {
+                        Palette::OBP(self.regs.opb1)
+                    }
                 } else {
-                    Palette::OBP(self.regs.opb1)
+                    Palette::OBP(sprite.get_cgb_obp_num())
                 };
 
                 let first_byte = if !sprite.is_y_flipped() {
-                    vram[sprite_tile + (2 * ly_bytes)]
+                    vram[vbk][sprite_tile + (2 * ly_bytes)]
                 } else {
-                    vram[sprite_tile + (2 * (7 - ly_bytes))]
+                    vram[vbk][sprite_tile + (2 * (7 - ly_bytes))]
                 };
 
                 let second_byte = if !sprite.is_y_flipped() {
-                    vram[sprite_tile + (2 * ly_bytes + 1)]
+                    vram[vbk][sprite_tile + (2 * ly_bytes + 1)]
                 } else {
-                    vram[sprite_tile + (2 * (7 - ly_bytes) + 1)]
+                    vram[vbk][sprite_tile + (2 * (7 - ly_bytes) + 1)]
                 };
 
                 for i in (0..8).rev() {
@@ -508,17 +533,17 @@ impl PPU {
                     let x = (real_x_pos + x_flip) as usize;
                     if (msb << 1 | lsb) != 0 {
                         let color = if sprite.is_obj_prio() {
-                            convert_to_color(msb << 1 | lsb, palette, self.cgb, &self.cram)
+                            convert_to_color(msb << 1 | lsb, palette, self.cgb, &self.obj_cram)
                         } else {
                             if current_line[x]
                                 == convert_to_color(
                                     0,
-                                    Palette::BGP(self.regs.bgp),
+                                    palette, // bug fix?
                                     self.cgb,
-                                    &self.cram,
+                                    &self.obj_cram,
                                 )
                             {
-                                convert_to_color(msb << 1 | lsb, palette, self.cgb, &self.cram)
+                                convert_to_color(msb << 1 | lsb, palette, self.cgb, &self.obj_cram)
                             } else {
                                 current_line[x]
                             }
@@ -567,10 +592,14 @@ impl PPU {
             for i in (0..8).rev() {
                 let lsb = (first_byte & (1 << i)) >> i;
                 let msb = (second_byte & (1 << i)) >> i;
-                let h_index = if tile_attribute.h_flip && self.cgb { i } else { 7 - i };
+                let h_index = if tile_attribute.h_flip && self.cgb {
+                    i
+                } else {
+                    7 - i
+                };
 
                 current_line[h_index] =
-                    convert_to_color(msb << 1 | lsb, Palette::BGP(bgp), self.cgb, &self.cram);
+                    convert_to_color(msb << 1 | lsb, Palette::BGP(bgp), self.cgb, &self.bg_cram);
             }
         } else {
             let first_byte = if vram[vbk][index] <= 127 {
@@ -590,10 +619,14 @@ impl PPU {
             for i in (0..8).rev() {
                 let lsb = (first_byte & (1 << i)) >> i;
                 let msb = (second_byte & (1 << i)) >> i;
-                let h_index = if tile_attribute.h_flip && self.cgb { i } else { 7 - i };
+                let h_index = if tile_attribute.h_flip && self.cgb {
+                    i
+                } else {
+                    7 - i
+                };
 
                 current_line[h_index] =
-                    convert_to_color(msb << 1 | lsb, Palette::BGP(bgp), self.cgb, &self.cram);
+                    convert_to_color(msb << 1 | lsb, Palette::BGP(bgp), self.cgb, &self.bg_cram);
             }
         }
 

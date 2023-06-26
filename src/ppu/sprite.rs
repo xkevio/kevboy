@@ -51,8 +51,16 @@ impl Sprite {
     /// 0 = OBP0
     ///
     /// 1 = OBP1
-    pub fn get_obp_num(&self) -> u8 {
+    pub fn get_dmg_obp_num(&self) -> u8 {
         (self.attr & 0x10) >> 4
+    }
+
+    pub fn get_cgb_obp_num(&self) -> u8 {
+        self.attr & 0x07
+    }
+
+    pub fn vbk(&self) -> u8 {
+        (self.attr & 0x08) >> 3
     }
 
     /// True if bit 7 of byte 3 is 0
