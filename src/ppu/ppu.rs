@@ -237,6 +237,7 @@ impl PPU {
                             oam,
                             self.regs.ly,
                             self.regs.is_sprite_8x8(),
+                            self.cgb,
                         );
                     }
                 }

@@ -8,7 +8,13 @@ pub struct Sprite {
 
 // oam $FE00-$FE9F
 // 10 sprites per scanline
-pub fn get_current_sprites_per_line(oam: &[u8], ly: u8, height_mode: bool) -> Vec<Sprite> {
+// x coord and oam in dmg, just oam in cgb
+pub fn get_current_sprites_per_line(
+    oam: &[u8],
+    ly: u8,
+    height_mode: bool,
+    cgb: bool,
+) -> Vec<Sprite> {
     let mut sprites: Vec<Sprite> = Vec::new();
 
     for attributes in oam.chunks(4) {
@@ -26,7 +32,9 @@ pub fn get_current_sprites_per_line(oam: &[u8], ly: u8, height_mode: bool) -> Ve
         }
     }
 
-    sprites.sort_by(|a, b| a.x_pos.cmp(&b.x_pos));
+    if !cgb {
+        sprites.sort_by(|a, b| a.x_pos.cmp(&b.x_pos));
+    }
     sprites
 }
 
