@@ -81,7 +81,10 @@ impl MMIO for Bus {
 
         match address {
             0x0000..=0x7FFF => self.cartridge.write(address, value),
-            0x8000..=0x9FFF => self.vram[(self.vbk & 1) as usize][address as usize - 0x8000] = value,
+            0x8000..=0x9FFF => {
+                // println!("Write to VRAM{}:{:#06X} = {:#04X}", self.vbk & 1, address, value);
+                self.vram[(self.vbk & 1) as usize][address as usize - 0x8000] = value;
+            },
             0xA000..=0xBFFF => self.cartridge.write(address, value),
             0xC000..=0xCFFF => self.wram[0][address as usize & 0x0FFF] = value,
             0xD000..=0xFDFF => {
@@ -139,7 +142,7 @@ impl Bus {
             interrupt_handler: InterruptHandler::default(),
             disable_boot_rom: 0xFF, // not writable once unmapped
             vbk: 0xFF,
-            svbk: 0xFF,
+            svbk: 0xF8,
         }
     }
 

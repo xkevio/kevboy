@@ -824,13 +824,9 @@ impl CPU {
             3 => self.registers.E = value,
             4 => self.registers.H = value,
             5 => self.registers.L = value,
-            6 => {
-                bus.write(self.registers.get_hl(), value);
-            }
+            6 => bus.write(self.registers.get_hl(), value),
             7 => self.registers.A = value,
-            _ => {
-                panic!("Invalid register!")
-            }
+            _ => panic!("Invalid register!"),
         }
     }
 

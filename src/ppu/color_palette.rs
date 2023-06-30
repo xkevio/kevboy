@@ -17,11 +17,11 @@ pub enum Palette {
 /// Gets transformed into chosen color palette by the UI.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ScreenColor {
-    White,
-    LightGray,
-    Gray,
-    Black,
-    FullColor(Color32),
+    White(u8),
+    LightGray(u8),
+    Gray(u8),
+    Black(u8),
+    FullColor(Color32, u8),
 }
 
 // Pre-defined color palettes based on associated constants
@@ -56,42 +56,42 @@ impl Chocolate {
 pub(super) fn convert_to_color(value: u8, palette: Palette, cgb: bool, cram: &[u8]) -> ScreenColor {
     match palette {
         Palette::BGP(bgp) if !cgb => match value {
-            0b00 => color_from_value(bgp & 0b11),
-            0b01 => color_from_value((bgp & 0b1100) >> 2),
-            0b10 => color_from_value((bgp & 0b110000) >> 4),
-            0b11 => color_from_value((bgp & 0b11000000) >> 6),
+            0b00 => color_from_value(bgp & 0b11, value),
+            0b01 => color_from_value((bgp & 0b1100) >> 2, value),
+            0b10 => color_from_value((bgp & 0b110000) >> 4, value),
+            0b11 => color_from_value((bgp & 0b11000000) >> 6, value),
             _ => unreachable!(),
         },
         Palette::BGP(bgp) if cgb => {
             let palette = (bgp * 8 + value * 2) as usize;
             let color_bytes = u16::from_le_bytes([cram[palette], cram[palette + 1]]);
-            ScreenColor::FullColor(rgb555_to_color(color_bytes))
+            ScreenColor::FullColor(rgb555_to_color(color_bytes), value)
         }
         Palette::OBP(obp) if !cgb => match value {
-            0b01 => color_from_value((obp & 0b1100) >> 2),
-            0b10 => color_from_value((obp & 0b110000) >> 4),
-            0b11 => color_from_value((obp & 0b11000000) >> 6),
+            0b01 => color_from_value((obp & 0b1100) >> 2, value),
+            0b10 => color_from_value((obp & 0b110000) >> 4, value),
+            0b11 => color_from_value((obp & 0b11000000) >> 6, value),
             _ => unreachable!(),
         },
         Palette::OBP(obp) if cgb => {
             if value == 0 {
-                return ScreenColor::FullColor(Color32::TRANSPARENT);
+                return ScreenColor::FullColor(Color32::TRANSPARENT, 0);
             }
 
             let palette = (obp * 8 + value * 2) as usize;
             let color_bytes = u16::from_le_bytes([cram[palette], cram[palette + 1]]);
-            ScreenColor::FullColor(rgb555_to_color(color_bytes))
+            ScreenColor::FullColor(rgb555_to_color(color_bytes), value)
         }
         _ => unreachable!(),
     }
 }
 
-fn color_from_value(value: u8) -> ScreenColor {
+fn color_from_value(value: u8, index: u8) -> ScreenColor {
     match value {
-        0b00 => ScreenColor::White,
-        0b01 => ScreenColor::LightGray,
-        0b10 => ScreenColor::Gray,
-        0b11 => ScreenColor::Black,
+        0b00 => ScreenColor::White(index),
+        0b01 => ScreenColor::LightGray(index),
+        0b10 => ScreenColor::Gray(index),
+        0b11 => ScreenColor::Black(index),
         _ => unreachable!(),
     }
 }
@@ -99,7 +99,7 @@ fn color_from_value(value: u8) -> ScreenColor {
 fn rgb555_to_color(rgb: u16) -> Color32 {
     let red = (rgb & 0x1F) as u8;
     let green = ((rgb >> 5) & 0x1F) as u8;
-    let blue: u8 = ((rgb >> 10) & 0x1F) as u8;
+    let blue = ((rgb >> 10) & 0x1F) as u8;
 
     Color32::from_rgb(
         (red << 3) | (red >> 2),

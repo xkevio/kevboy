@@ -1,4 +1,4 @@
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct TileAttribute {
     pub bg_to_oam: BgOamPrio,
     pub v_flip: bool,
@@ -19,7 +19,7 @@ impl From<u8> for TileAttribute {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BgOamPrio {
     OAMPrio,
     BGPrio,
