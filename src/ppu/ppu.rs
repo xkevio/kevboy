@@ -1,5 +1,3 @@
-use egui::Color32;
-
 use crate::{
     cpu::interrupts::{Interrupt, InterruptHandler},
     mmu::mmio::MMIO,

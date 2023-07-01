@@ -27,6 +27,8 @@ pub struct Bus {
     disable_boot_rom: u8,
     vbk: u8,
     svbk: u8,
+
+    pub space: Vec<Vec<u16>>,
 }
 
 // ----------------------------
@@ -36,85 +38,100 @@ pub struct Bus {
 impl MMIO for Bus {
     #[rustfmt::skip]
     fn read(&mut self, address: u16) -> u8 {
-        if self.ppu.get_dma_state() != DMATransferState::Transferring {
-            self.tick(1);
-        }
+        // if self.ppu.get_dma_state() != DMATransferState::Transferring {
+        //     self.tick(1);
+        // }
 
-        match address {
-            0x0000..=0x7FFF => self.cartridge.read(address),
-            0x8000..=0x9FFF => self.vram[(self.vbk & 1) as usize][address as usize - 0x8000],
-            0xA000..=0xBFFF => self.cartridge.read(address),
-            0xC000..=0xCFFF => self.wram[0][address as usize & 0x0FFF],
-            0xD000..=0xFDFF => {
-                // Echo RAM.
-                if address > 0xDFFF && address < 0xF000 {
-                    return self.wram[0][address as usize & 0x0FFF];
-                }
+        let a = self.space.iter().find(|v| {
+            v[0] == address
+        });
 
-                let wram_bank = if self.svbk & 0x07 == 0 { 1 } else { (self.svbk & 0x07) as usize };
-                self.wram[wram_bank][address as usize & 0x0FFF]
-            }
-            0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00],
-            0xFEA0..=0xFEFF => 0xFF, // usage of this area not prohibited, may trigger oam corruption
-            0xFF00..=0xFF7F => match address {
-                0xFF00 => self.joypad.read(address),
-                0xFF01 | 0xFF02 => self.serial.read(address),
-                0xFF04..=0xFF07 => self.timer.read(address),
-                0xFF0F => self.interrupt_handler.intf,
-                0xFF10..=0xFF3F => self.apu.read(address),
-                0xFF40..=0xFF4B | 0xFF68..=0xFF6B => self.ppu.read(address),
-                0xFF4F => self.vbk,
-                0xFF50 => self.disable_boot_rom,
-                0xFF70 => self.svbk,
-                _ => 0xFF,
-            },
-            0xFF80..=0xFFFE => self.hram[address as usize - 0xFF80],
-            0xFFFF => self.interrupt_handler.inte,
-        }
+        a.unwrap()[1] as u8
+
+        // match address {
+        //     0x0000..=0x7FFF => self.cartridge.read(address),
+        //     0x8000..=0x9FFF => self.vram[(self.vbk & 1) as usize][address as usize - 0x8000],
+        //     0xA000..=0xBFFF => self.cartridge.read(address),
+        //     0xC000..=0xCFFF => self.wram[0][address as usize & 0x0FFF],
+        //     0xD000..=0xFDFF => {
+        //         // Echo RAM.
+        //         if address > 0xDFFF && address < 0xF000 {
+        //             return self.wram[0][address as usize & 0x0FFF];
+        //         }
+
+        //         let wram_bank = if self.svbk & 0x07 == 0 { 1 } else { (self.svbk & 0x07) as usize };
+        //         self.wram[wram_bank][address as usize & 0x0FFF]
+        //     }
+        //     0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00],
+        //     0xFEA0..=0xFEFF => 0xFF, // usage of this area not prohibited, may trigger oam corruption
+        //     0xFF00..=0xFF7F => match address {
+        //         0xFF00 => self.joypad.read(address),
+        //         0xFF01 | 0xFF02 => self.serial.read(address),
+        //         0xFF04..=0xFF07 => self.timer.read(address),
+        //         0xFF0F => self.interrupt_handler.intf,
+        //         0xFF10..=0xFF3F => self.apu.read(address),
+        //         0xFF40..=0xFF4B | 0xFF68..=0xFF6B => self.ppu.read(address),
+        //         0xFF4F => self.vbk,
+        //         0xFF50 => self.disable_boot_rom,
+        //         0xFF70 => self.svbk,
+        //         _ => 0xFF,
+        //     },
+        //     0xFF80..=0xFFFE => self.hram[address as usize - 0xFF80],
+        //     0xFFFF => self.interrupt_handler.inte,
+        // }
     }
 
     #[rustfmt::skip]
     fn write(&mut self, address: u16, value: u8) {
-        if self.ppu.get_dma_state() != DMATransferState::Transferring {
-            self.tick(1);
-        }
+        // if self.ppu.get_dma_state() != DMATransferState::Transferring {
+        //     self.tick(1);
+        // }
 
-        match address {
-            0x0000..=0x7FFF => self.cartridge.write(address, value),
-            0x8000..=0x9FFF => {
-                // println!("Write to VRAM{}:{:#06X} = {:#04X}", self.vbk & 1, address, value);
-                self.vram[(self.vbk & 1) as usize][address as usize - 0x8000] = value;
-            },
-            0xA000..=0xBFFF => self.cartridge.write(address, value),
-            0xC000..=0xCFFF => self.wram[0][address as usize & 0x0FFF] = value,
-            0xD000..=0xFDFF => {
-                // Echo RAM.
-                if address > 0xDFFF && address < 0xF000 {
-                    self.wram[0][address as usize & 0x0FFF] = value;
-                } else {
-                    let wram_bank = if self.svbk & 0x07 == 0 { 1 } else { (self.svbk & 0x07) as usize };
-                    self.wram[wram_bank][address as usize & 0x0FFF] = value;
-                }
-            }
-            0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00] = value,
-            0xFEA0..=0xFEFF => {} // not usable area
-            0xFF00..=0xFF7F => match address {
-                0xFF00 => self.joypad.write(address, value),
-                0xFF01 | 0xFF02 => self.serial.write(address, value),
-                0xFF04..=0xFF07 => self.timer.write(address, value),
-                0xFF0F => self.interrupt_handler.intf = value | 0b1110_0000,
-                0xFF10..=0xFF3F => self.apu.write(address, value),
-                0xFF40..=0xFF4B | 0xFF68..=0xFF6B => {
-                    self.ppu
-                        .write_with_callback(address, value, &mut self.interrupt_handler)
-                }
-                0xFF4F => self.vbk = 0xFE | (value & 1),
-                0xFF70 => self.svbk = 0xF8 | (value & 0x07),
-                _ => {}
-            },
-            0xFF80..=0xFFFE => self.hram[address as usize - 0xFF80] = value,
-            0xFFFF => self.interrupt_handler.inte = value,
-        }
+        self.space.push(vec![address, value as u16]);
+
+        // match address {
+        //     0x0000..=0x7FFF => self.cartridge.write(address, value),
+        //     0x8000..=0x9FFF => {
+        //         if self.vbk & 1 == 1 && address >= 0x9C00 {
+        //             // println!("Write to VRAM{}:{:#06X} = {:#04X}", self.vbk & 1, address, value);
+        //         }
+        //         self.vram[(self.vbk & 1) as usize][address as usize - 0x8000] = value;
+        //     },
+        //     0xA000..=0xBFFF => self.cartridge.write(address, value),
+        //     0xC000..=0xCFFF => self.wram[0][address as usize & 0x0FFF] = value,
+        //     0xD000..=0xFDFF => {
+        //         // Echo RAM.
+        //         if address > 0xDFFF && address < 0xF000 {
+        //             self.wram[0][address as usize & 0x0FFF] = value;
+        //         } else {
+        //             let wram_bank = if self.svbk & 0x07 == 0 { 1 } else { (self.svbk & 0x07) as usize };
+        //             self.wram[wram_bank][address as usize & 0x0FFF] = value;
+        //         }
+        //     }
+        //     0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00] = value,
+        //     0xFEA0..=0xFEFF => {} // not usable area
+        //     0xFF00..=0xFF7F => match address {
+        //         0xFF00 => self.joypad.write(address, value),
+        //         0xFF01 | 0xFF02 => self.serial.write(address, value),
+        //         0xFF04..=0xFF07 => self.timer.write(address, value),
+        //         0xFF0F => self.interrupt_handler.intf = value | 0b1110_0000,
+        //         0xFF10..=0xFF3F => self.apu.write(address, value),
+        //         0xFF40..=0xFF4B | 0xFF68..=0xFF6B => {
+        //             self.ppu
+        //                 .write_with_callback(address, value, &mut self.interrupt_handler)
+        //         }
+        //         0xFF4F => {
+        //             if value == 0xFF {
+        //                 println!("VBK WRITE TO 0xFF");
+        //             }
+        //             self.vbk = 0xFE | (value & 1);
+        //         },
+        //         0xFF70 => self.svbk = 0xF8 | (value & 0x07),
+        //         _ => {}
+        //     },
+        //     0xFF80..=0xFFFE => self.hram[address as usize - 0xFF80] = value,
+        //     0xFFFF => self.interrupt_handler.inte = value,
+        // }
     }
 }
 
@@ -123,7 +140,7 @@ impl MMIO for Bus {
 // ----------------------------
 
 impl Bus {
-    pub fn new() -> Self {
+    pub fn new(space: &Vec<Vec<u16>>) -> Self {
         Self {
             cartridge: Cartridge::default(),
 
@@ -142,7 +159,9 @@ impl Bus {
             interrupt_handler: InterruptHandler::default(),
             disable_boot_rom: 0xFF, // not writable once unmapped
             vbk: 0xFF,
-            svbk: 0xF8,
+            svbk: 0xFF,
+
+            space: space.clone(),
         }
     }
 
@@ -151,34 +170,34 @@ impl Bus {
     ///
     /// Advances timer, serial and PPU for now.
     pub fn tick(&mut self, cycles_passed: u16) {
-        let prev_tima = self.timer.tima;
-        self.timer.tick(cycles_passed);
+        // let prev_tima = self.timer.tima;
+        // self.timer.tick(cycles_passed);
 
-        if self.timer.irq && prev_tima == 0 {
-            self.timer.reload_tima();
-            self.interrupt_handler.request_interrupt(Interrupt::Timer);
-        }
+        // if self.timer.irq && prev_tima == 0 {
+        //     self.timer.reload_tima();
+        //     self.interrupt_handler.request_interrupt(Interrupt::Timer);
+        // }
 
-        // TODO: Clock in T-cycles or M-cycles?
-        for _ in 0..(cycles_passed * 4) {
-            self.apu.tick((self.timer.div >> 8) as u8);
-        }
+        // // TODO: Clock in T-cycles or M-cycles?
+        // for _ in 0..(cycles_passed * 4) {
+        //     self.apu.tick((self.timer.div >> 8) as u8);
+        // }
 
-        self.serial
-            .tick(&mut self.interrupt_handler, cycles_passed, self.timer.div);
+        // self.serial
+        //     .tick(&mut self.interrupt_handler, cycles_passed, self.timer.div);
 
-        // PPU ticks 4 times per M-cycle
-        for _ in 0..(cycles_passed * 4) {
-            self.ppu
-                .tick(&self.vram, &self.oam, &mut self.interrupt_handler);
-        }
+        // // PPU ticks 4 times per M-cycle
+        // for _ in 0..(cycles_passed * 4) {
+        //     self.ppu
+        //         .tick(&self.vram, &self.oam, &mut self.interrupt_handler);
+        // }
 
-        // DMA is delayed one cycle -- write -> nothing -> DMA
-        match self.ppu.get_dma_state() {
-            DMATransferState::Pending => self.ppu.set_dma_enable(),
-            DMATransferState::Transferring => self.oam_dma_transfer(),
-            DMATransferState::Disabled => {}
-        }
+        // // DMA is delayed one cycle -- write -> nothing -> DMA
+        // match self.ppu.get_dma_state() {
+        //     DMATransferState::Pending => self.ppu.set_dma_enable(),
+        //     DMATransferState::Transferring => self.oam_dma_transfer(),
+        //     DMATransferState::Disabled => {}
+        // }
     }
 
     pub fn read_16(&mut self, address: u16) -> u16 {

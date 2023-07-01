@@ -20,7 +20,7 @@ impl Emulator {
     pub fn new() -> Self {
         Self {
             cpu: CPU::new(),
-            bus: Bus::new(),
+            bus: Bus::new(&Vec::new()),
             rom: Vec::new(),
             cycle_count: 0,
             cgb: false,
@@ -83,7 +83,7 @@ impl Emulator {
             self.cycle_count += 5;
         }
 
-        self.cpu.tick(&mut self.bus)
+        self.cpu.tick(&mut self.bus, None)
     }
 
     // ------------ CARTRIDGE INFO FOR DISPLAY ---------------
@@ -154,7 +154,7 @@ impl Emulator {
 
     pub fn reset(&mut self) {
         self.cpu = CPU::new();
-        self.bus = Bus::new();
+        self.bus = Bus::new(&Vec::new());
         self.rom = Vec::new();
         self.cycle_count = 0;
         self.cgb = false;
