@@ -47,7 +47,7 @@ impl CPU {
 
     // Returns m-cycles
     #[rustfmt::skip]
-    pub fn tick(&mut self, bus: &mut Bus, opcode: Option<u16>) -> u8 {
+    pub fn tick(&mut self, bus: &mut Bus) -> u8 {
         if self.halt {
             bus.tick(1);
             return 1;
@@ -65,8 +65,8 @@ impl CPU {
         }
 
         // let opcode = self.fetch_operand(bus);
-        let long_op = opcode.unwrap();
-        let opcode = long_op as u8;
+        // let long_op = opcode.unwrap();
+        let opcode = self.fetch_operand(bus);
         // println!("{:#06X}: {:#06X}", self.registers.PC - 1, opcode);
 
         if self.halt_bug {
@@ -76,7 +76,7 @@ impl CPU {
 
         if opcode == 0xCB {
             // let cb_opcode = self.fetch_operand(bus);
-            let cb_opcode = ((long_op & 0xFF) >> 8) as u8;
+            let cb_opcode = self.fetch_operand(bus);
 
             match cb_opcode {
                 0x00 => { self.registers.B = self.rlc(self.registers.B); 2 }
@@ -577,7 +577,7 @@ impl CPU {
                     let address = 0xFF00 + (self.fetch_operand(bus) as u16);
                     bus.write(address, self.registers.A);
 
-                    println!("REGISTER A: {:#06X}", self.registers.A);
+                    // println!("REGISTER A: {:#06X}", self.registers.A);
 
                     3
                 }
@@ -810,8 +810,7 @@ impl CPU {
     fn bit(&mut self, bit: u8, reg8: u8) {
         let reg_bit = (reg8 & (1 << bit)) >> bit;
 
-        self.registers.F |= !(reg_bit << 7);
-        // self.registers.set_flag(Flag::Zero, !reg_bit);
+        self.registers.set_flag(Flag::Zero, reg_bit == 0);
         self.registers.set_flag(Flag::Substraction, false);
         self.registers.set_flag(Flag::HalfCarry, true);
     }

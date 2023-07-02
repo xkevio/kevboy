@@ -83,7 +83,7 @@ impl Emulator {
             self.cycle_count += 5;
         }
 
-        self.cpu.tick(&mut self.bus, None)
+        self.cpu.tick(&mut self.bus)
     }
 
     // ------------ CARTRIDGE INFO FOR DISPLAY ---------------

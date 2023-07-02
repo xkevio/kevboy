@@ -87,7 +87,15 @@ impl MMIO for Bus {
         //     self.tick(1);
         // }
 
-        self.space.push(vec![address, value as u16]);
+        let existing_space = self.space.iter().position(|a| {
+            a[0] == address
+        });
+
+        if let Some(p) = existing_space {
+            self.space[p][1] = value as u16;
+        } else {
+            self.space.push(vec![address, value as u16]);
+        }
 
         // match address {
         //     0x0000..=0x7FFF => self.cartridge.write(address, value),
