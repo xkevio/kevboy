@@ -14,6 +14,8 @@ pub enum Palette {
 
 /// Abstraction for screen color, does not hold color information on its own.
 ///
+/// Saves color index to resolve priority later.
+///
 /// Gets transformed into chosen color palette by the UI.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ScreenColor {

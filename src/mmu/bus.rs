@@ -7,6 +7,8 @@ use crate::{
     ppu::ppu::{DMATransferState, PPU},
 };
 
+use super::hdma_transfer::Hdma;
+
 pub struct Bus {
     pub cartridge: Cartridge,
 
@@ -27,6 +29,8 @@ pub struct Bus {
     disable_boot_rom: u8,
     vbk: u8,
     svbk: u8,
+
+    hdma: Hdma,
 }
 
 // ----------------------------
@@ -36,7 +40,7 @@ pub struct Bus {
 impl MMIO for Bus {
     #[rustfmt::skip]
     fn read(&mut self, address: u16) -> u8 {
-        if self.ppu.get_dma_state() != DMATransferState::Transferring {
+        if self.ppu.get_dma_state() != DMATransferState::Transferring && !self.hdma.halted {
             self.tick(1);
         }
 
@@ -65,6 +69,7 @@ impl MMIO for Bus {
                 0xFF40..=0xFF4B | 0xFF68..=0xFF6B => self.ppu.read(address),
                 0xFF4F => self.vbk,
                 0xFF50 => self.disable_boot_rom,
+                0xFF51..=0xFF55 => self.hdma.read(address),
                 0xFF70 => self.svbk,
                 _ => 0xFF,
             },
@@ -81,10 +86,7 @@ impl MMIO for Bus {
 
         match address {
             0x0000..=0x7FFF => self.cartridge.write(address, value),
-            0x8000..=0x9FFF => {
-                // println!("Write to VRAM{}:{:#06X} = {:#04X}", self.vbk & 1, address, value);
-                self.vram[(self.vbk & 1) as usize][address as usize - 0x8000] = value;
-            },
+            0x8000..=0x9FFF => self.vram[(self.vbk & 1) as usize][address as usize - 0x8000] = value,
             0xA000..=0xBFFF => self.cartridge.write(address, value),
             0xC000..=0xCFFF => self.wram[0][address as usize & 0x0FFF] = value,
             0xD000..=0xFDFF => {
@@ -106,9 +108,16 @@ impl MMIO for Bus {
                 0xFF10..=0xFF3F => self.apu.write(address, value),
                 0xFF40..=0xFF4B | 0xFF68..=0xFF6B => {
                     self.ppu
-                        .write_with_callback(address, value, &mut self.interrupt_handler)
+                        .write_with_callback(address, value, || self.interrupt_handler.request_interrupt(Interrupt::STAT))
                 }
-                0xFF4F => self.vbk = 0xFE | (value & 1),
+                0xFF4F => self.vbk = 0xFE | value,
+                0xFF51..=0xFF55 => {
+                    self.hdma.write(address, value);
+                    if address == 0xFF55 {
+                        self.hdma.halted = true;
+                        self.vram_dma_transfer();
+                    }
+                },
                 0xFF70 => self.svbk = 0xF8 | (value & 0x07),
                 _ => {}
             },
@@ -143,6 +152,8 @@ impl Bus {
             disable_boot_rom: 0xFF, // not writable once unmapped
             vbk: 0xFF,
             svbk: 0xF8,
+
+            hdma: Hdma::default(),
         }
     }
 
@@ -204,5 +215,20 @@ impl Bus {
         }
 
         self.ppu.reset_dma();
+    }
+
+    fn vram_dma_transfer(&mut self) {
+        // TODO: HDMA
+        if self.hdma.is_gdma() {
+            let source = self.hdma.source();
+            let dest = self.hdma.dest();
+            let len = self.hdma.length();
+
+            for i in 0..len {
+                self.vram[(self.vbk & 1) as usize][(dest + i) as usize] = self.read(source + i);
+            }
+
+            self.hdma.complete_transfer();
+        }
     }
 }

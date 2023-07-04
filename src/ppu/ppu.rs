@@ -1,4 +1,4 @@
-use egui::Color32;
+#![allow(clippy::if_same_then_else)]
 
 use crate::{
     cpu::interrupts::{Interrupt, InterruptHandler},
@@ -105,7 +105,7 @@ impl MMIO for PPU {
         unimplemented!()
     }
 
-    fn write_with_callback(&mut self, address: u16, value: u8, cb: &mut InterruptHandler) {
+    fn write_with_callback<F: FnMut()>(&mut self, address: u16, value: u8, mut irq_stat: F) {
         match address {
             0xFF40 => {
                 self.regs.lcdc = value;
@@ -122,7 +122,7 @@ impl MMIO for PPU {
                     }
 
                     if self.check_stat_interrupt() {
-                        cb.request_interrupt(Interrupt::STAT);
+                        irq_stat();
                     }
                 }
             }
@@ -130,7 +130,7 @@ impl MMIO for PPU {
                 self.regs.stat = (1 << 7) | (value & !(0b111)) | (self.regs.stat & 0b111);
 
                 if self.check_stat_interrupt() {
-                    cb.request_interrupt(Interrupt::STAT);
+                    irq_stat();
                 }
             }
             0xFF42 => self.regs.scy = value,
@@ -148,7 +148,7 @@ impl MMIO for PPU {
                 }
 
                 if self.check_stat_interrupt() {
-                    cb.request_interrupt(Interrupt::STAT);
+                    irq_stat();
                 }
             }
             0xFF46 => {
@@ -374,11 +374,8 @@ impl PPU {
         for i in 0..=255 {
             let unsigned_addressing = self.regs.lcdc & 0b10000 != 0;
 
-            let bg_tile_map_area = if self.regs.lcdc & 0b1000 == 0 {
-                0x9800 - 0x8000
-            } else {
-                0x9C00 - 0x8000
-            };
+            let bg_tile_map_area =
+                if self.regs.lcdc & 0b1000 == 0 { 0x9800 - 0x8000 } else { 0x9C00 - 0x8000 };
 
             let adjusted_y = i;
             let tile_map_start = bg_tile_map_area + (((adjusted_y / 8) as usize) * 0x20);
@@ -418,13 +415,10 @@ impl PPU {
             0x9C00 - 0x8000
         };
 
-        // println!("lcdc: {:#010X}", self.regs.lcdc);
-
         let adjusted_y = self.regs.ly + self.regs.scy;
         let tile_map_start = bg_tile_map_area + (((adjusted_y / 8) as usize) * 0x20);
 
         for index in tile_map_start..=(tile_map_start + 0x1F) {
-            // println!("vram:0 @ {:#010X} = {:#04X}", index + 0x8000, vram[0][index as usize]);
             let tile_row = self.get_tile_row(vram, unsigned_addressing, index, adjusted_y);
             current_line.extend(tile_row);
         }
@@ -447,8 +441,6 @@ impl PPU {
             let tile_map_start = win_tile_map_area + (((win_y / 8) as usize) * 0x20);
 
             for (j, index) in (tile_map_start..=(tile_map_start + 0x1F)).enumerate() {
-                // println!("vram:0 @ {:#010X} = {:#04X}", index + 0x8000, vram[0][index as usize]);
-
                 let tile_row = self.get_tile_row(vram, unsigned_addressing, index, win_y);
 
                 for i in 0..8 {
@@ -539,10 +531,8 @@ impl PPU {
 
                     let x = (real_x_pos + x_flip) as usize;
                     if (msb << 1 | lsb) != 0 {
-                        let tr = TileAttribute::from(vram[1][current_tile as usize]);
                         let color = self.resolve_bg_to_obj_prio(
                             sprite,
-                            &tr,
                             current_line[x].0,
                             msb << 1 | lsb,
                             palette,
@@ -571,50 +561,20 @@ impl PPU {
         let mut current_line: [(ScreenColor, BgOamPrio); 8] =
             [(ScreenColor::White(0), BgOamPrio::BGPrio); 8];
 
-        // FIXME: half of vram:1 is $7F instead of $00
         let tile_attribute = TileAttribute::from(vram[1][index]);
 
-        let vbk = if self.cgb {
-            tile_attribute.vram_bank as usize
-        } else {
-            0
-        };
-        let bgp = if self.cgb {
-            tile_attribute.bgp
-        } else {
-            self.regs.bgp
-        };
-        let v_flip = if self.cgb {
-            tile_attribute.v_flip
-        } else {
-            false
-        };
+        let vbk = if self.cgb { tile_attribute.vram_bank as usize } else { 0 };
+        let bgp = if self.cgb { tile_attribute.bgp } else { self.regs.bgp };
+        let v_flip = if self.cgb { tile_attribute.v_flip } else { false };
 
         let line_index = (vram[0][index] as usize) * 16;
-        let ly_bytes = if !v_flip {
-            (y % 8) as usize
-        } else {
-            (7 - (y % 8)) as usize
-        };
+        let ly_bytes = if !v_flip { (y % 8) as usize } else { (7 - (y % 8)) as usize };
 
-        if unsigned_addressing {
-            let first_byte = vram[vbk][line_index + (2 * ly_bytes)];
-            let second_byte = vram[vbk][line_index + (2 * ly_bytes + 1)];
-
-            for i in (0..8).rev() {
-                let lsb = (first_byte & (1 << i)) >> i;
-                let msb = (second_byte & (1 << i)) >> i;
-                let h_index = if tile_attribute.h_flip && self.cgb {
-                    i
-                } else {
-                    7 - i
-                };
-
-                current_line[h_index] = (
-                    convert_to_color(msb << 1 | lsb, Palette::BGP(bgp), self.cgb, &self.bg_cram),
-                    tile_attribute.bg_to_oam,
-                );
-            }
+        let (first_byte, second_byte) = if unsigned_addressing {
+            (
+                vram[vbk][line_index + (2 * ly_bytes)],
+                vram[vbk][line_index + (2 * ly_bytes + 1)],
+            )
         } else {
             let first_byte = if vram[0][index] <= 127 {
                 vram[vbk][(0x9000 - 0x8000) + line_index + (2 * ly_bytes)]
@@ -630,29 +590,32 @@ impl PPU {
                 vram[vbk][(0x8800 - 0x8000) + line_index + (2 * ly_bytes + 1)]
             };
 
-            for i in (0..8).rev() {
-                let lsb = (first_byte & (1 << i)) >> i;
-                let msb = (second_byte & (1 << i)) >> i;
-                let h_index = if tile_attribute.h_flip && self.cgb {
-                    i
-                } else {
-                    7 - i
-                };
+            (first_byte, second_byte)
+        };
 
-                current_line[h_index] = (
-                    convert_to_color(msb << 1 | lsb, Palette::BGP(bgp), self.cgb, &self.bg_cram),
-                    tile_attribute.bg_to_oam,
-                );
-            }
+        for i in (0..8).rev() {
+            let lsb = (first_byte & (1 << i)) >> i;
+            let msb = (second_byte & (1 << i)) >> i;
+            let h_index = if tile_attribute.h_flip && self.cgb { i } else { 7 - i };
+
+            current_line[h_index] = (
+                convert_to_color(msb << 1 | lsb, Palette::BGP(bgp), self.cgb, &self.bg_cram),
+                tile_attribute.bg_to_oam,
+            );
         }
 
         current_line
     }
 
+    /// BG to OBJ priority gets resolved like this:
+    ///
+    /// 1. If the BG color index is 0, OBJ has priority
+    /// 2. Otherwise, if LCDC bit 0 is clear, OBJ has priority
+    /// 3. Otherwise, if BG attributes and OAM attributes have bit 7 clear, OBJ has priority
+    /// 4. Otherwise, BG has priority.
     fn resolve_bg_to_obj_prio(
         &self,
         sprite: &Sprite,
-        _bg_attr: &TileAttribute,
         current_color: ScreenColor,
         index: u8,
         palette: Palette,
@@ -666,7 +629,6 @@ impl PPU {
                 &self.obj_cram,
             );
 
-            // check bg color index (if 0)
             if matches!(current_color, ScreenColor::FullColor(_, 0)) {
                 return obj;
             } else if self.regs.lcdc & 1 == 0 {
@@ -680,9 +642,13 @@ impl PPU {
             if sprite.is_obj_prio() {
                 return convert_to_color(index, palette, false, &self.obj_cram);
             } else {
-                if current_color
-                    == convert_to_color(0, Palette::BGP(self.regs.bgp), false, &self.bg_cram)
-                {
+                if matches!(
+                    current_color,
+                    ScreenColor::White(0)
+                        | ScreenColor::LightGray(0)
+                        | ScreenColor::Gray(0)
+                        | ScreenColor::Black(0)
+                ) {
                     return convert_to_color(index, palette, false, &self.obj_cram);
                 } else {
                     return current_color;

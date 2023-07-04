@@ -760,11 +760,7 @@ impl CPU {
         self.registers.set_flag(Flag::Carry, reg8 & 0b1 != 0);
 
         let bit7 = reg8 & (1 << 7);
-        let reg8 = if bit7 == 0 {
-            reg8 >> 1
-        } else {
-            (reg8 >> 1) | (1 << 7)
-        };
+        let reg8 = if bit7 == 0 { reg8 >> 1 } else { (reg8 >> 1) | (1 << 7) };
 
         self.registers.set_flag(Flag::Zero, reg8 == 0);
         self.registers.set_flag(Flag::Substraction, false);
@@ -799,7 +795,7 @@ impl CPU {
     }
 
     fn bit(&mut self, bit: u8, reg8: u8) {
-        let reg_bit = reg8 & (1 << bit);
+        let reg_bit = (reg8 & (1 << bit)) >> bit;
 
         self.registers.set_flag(Flag::Zero, reg_bit == 0);
         self.registers.set_flag(Flag::Substraction, false);
@@ -1290,7 +1286,7 @@ impl CPU {
                 self.registers.A = bus.read(self.registers.SP);
 
                 // clear out lower nibble since it should always be zero
-                self.registers.F &= !(1 | 1 << 1 | 1 << 2 | 1 << 3);
+                self.registers.F &= !(0xF);
             }
             _ => {}
         }

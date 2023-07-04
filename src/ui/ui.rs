@@ -168,7 +168,7 @@ impl App for Kevboy {
                 .cloned();
 
             if let Some(file) = first_rom {
-                let rom = fs::read(file.path.clone().unwrap()).unwrap();
+                let rom = fs::read(file.path.unwrap()).unwrap();
                 self.emulator.load_rom(&rom);
                 self.mem_viewer = MemoryViewer::new_with_memory(&rom, true);
             }
