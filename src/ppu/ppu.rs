@@ -284,7 +284,6 @@ impl PPU {
                         self.regs.ly += 1;
 
                         if hdma.hdma_in_progress {
-                            println!("sssss");
                             for i in 0..0x10 {
                                 vram[vbk as usize][hdma.dest() as usize + i as usize] =
                                     hdma.bytes[i as usize];

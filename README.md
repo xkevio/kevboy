@@ -1,7 +1,8 @@
-# WIP Game Boy (DMG) Emulator
+# WIP Game Boy & Game Boy Color Emulator
 
-<p align="center">
-<img src="icon/kirby2.png" alt="Kirby's Dream Land 2" width="450" />
+<p float="left" align="middle">
+<img src="icon/crystal.png" alt="Kirby's Dream Land 2" width="450" />
+<img src="icon/shantae.png" alt="Kirby's Dream Land 2" width="350" />
 </p>
 
 ## Installation
@@ -62,7 +63,7 @@ For a full list, see: https://docs.rs/egui/latest/egui/enum.Key.html
 
 | Test              | Status |
 |-------------------|--------|
-| `dmg-acid2.gb`   | ✅     |
+| `dmg-acid2.gb`, `cgb-acid2.gb`   | ✅     |
 | `sprite_priority.gb`   | ✅     |
 
 #### Timer tests:
