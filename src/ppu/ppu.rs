@@ -2,7 +2,7 @@
 
 use crate::{
     cpu::interrupts::{Interrupt, InterruptHandler},
-    mmu::mmio::MMIO,
+    mmu::{hdma_transfer::Hdma, mmio::MMIO},
     ppu::{
         color_palette::*, ppu_regs::PPURegisters, sprite, sprite::Sprite,
         tile_attributes::BgOamPrio,
@@ -224,9 +224,11 @@ impl PPU {
     // 80 (Mode2) - 172 (Mode3) - 204 (HBlank) - VBlank
     pub fn tick(
         &mut self,
-        vram: &[[u8; 0x2000]],
+        vram: &mut [[u8; 0x2000]],
         oam: &[u8],
         interrupt_handler: &mut InterruptHandler,
+        hdma: &mut Hdma,
+        vbk: u8,
     ) {
         if self.regs.is_lcd_on() {
             // LY = 0 after lcd turn on: special behavior
@@ -268,6 +270,19 @@ impl PPU {
                 Mode::HBlank => {
                     if self.dots >= LINE_END {
                         self.regs.ly += 1;
+
+                        if hdma.hdma_in_progress {
+                            for i in 0..0x10 {
+                                vram[vbk as usize][hdma.dest() as usize + i as usize] =
+                                    hdma.bytes[i as usize];
+                            }
+
+                            if hdma.read(0xFF55) == 0x00 {
+                                hdma.complete_transfer();
+                            } else {
+                                hdma.update_remaining();
+                            }
+                        }
 
                         // Check STAT irq for LY change
                         if self.regs.ly_lyc() {

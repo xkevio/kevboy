@@ -114,8 +114,11 @@ impl MMIO for Bus {
                 0xFF51..=0xFF55 => {
                     self.hdma.write(address, value);
                     if address == 0xFF55 {
-                        self.hdma.halted = true;
-                        self.vram_dma_transfer();
+                        if (value & (1 << 7)) >> 7 == 0 && self.hdma.hdma_in_progress {
+                            self.hdma.terminate_transfer();
+                        } else {
+                            self.vram_dma_transfer();
+                        }
                     }
                 },
                 0xFF70 => self.svbk = 0xF8 | (value & 0x07),
@@ -180,8 +183,19 @@ impl Bus {
 
         // PPU ticks 4 times per M-cycle
         for _ in 0..(cycles_passed * 4) {
-            self.ppu
-                .tick(&self.vram, &self.oam, &mut self.interrupt_handler);
+            self.hdma.halted = true;
+            for i in 0..0x10 {
+                self.hdma.bytes[i] = self.read(self.hdma.source() + i as u16);
+            }
+            self.hdma.halted = false;
+
+            self.ppu.tick(
+                &mut self.vram,
+                &self.oam,
+                &mut self.interrupt_handler,
+                &mut self.hdma,
+                self.vbk & 1,
+            );
         }
 
         // DMA is delayed one cycle -- write -> nothing -> DMA
@@ -218,17 +232,22 @@ impl Bus {
     }
 
     fn vram_dma_transfer(&mut self) {
-        // TODO: HDMA
-        if self.hdma.is_gdma() {
-            let source = self.hdma.source();
-            let dest = self.hdma.dest();
-            let len = self.hdma.length();
+        let source = self.hdma.source();
+        let dest = self.hdma.dest();
+        let len = self.hdma.length();
+
+        if self.hdma.is_gdma() && !self.hdma.hdma_in_progress {
+            self.hdma.halted = true;
 
             for i in 0..len {
                 self.vram[(self.vbk & 1) as usize][(dest + i) as usize] = self.read(source + i);
             }
 
             self.hdma.complete_transfer();
+        } else {
+            let hdma5 = self.hdma.read(0xFF55);
+            self.hdma.write(0xFF55, hdma5 & 0x7F);
+            self.hdma.hdma_in_progress = true;
         }
     }
 }

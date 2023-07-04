@@ -13,6 +13,8 @@ pub struct Hdma {
     hdma5: u8,
 
     pub halted: bool,
+    pub hdma_in_progress: bool,
+    pub bytes: [u8; 0x10],
 }
 
 impl Hdma {
@@ -32,9 +34,29 @@ impl Hdma {
         ((self.hdma5 & 0x7F) as u16 + 1) * 0x10
     }
 
+    pub fn update_remaining(&mut self) {
+        let new_source = self.source() + 0x10;
+        let new_dest = self.dest() + 0x10;
+
+        self.hdma1 = new_source.to_be_bytes()[0];
+        self.hdma2 = new_source.to_be_bytes()[1];
+
+        self.hdma3 = new_dest.to_be_bytes()[0];
+        self.hdma4 = new_dest.to_be_bytes()[1];
+
+        self.hdma5 -= 1;
+    }
+
     pub fn complete_transfer(&mut self) {
+        self.hdma_in_progress = false;
         self.halted = false;
         self.hdma5 = 0xFF;
+    }
+
+    pub fn terminate_transfer(&mut self) {
+        self.hdma_in_progress = false;
+        self.halted = false;
+        self.hdma5 = 0x80 | (self.hdma5 - 1);
     }
 }
 
@@ -47,6 +69,8 @@ impl Default for Hdma {
             hdma4: 0xFF,
             hdma5: 0xFF,
             halted: false,
+            hdma_in_progress: false,
+            bytes: [0xFF; 0x10],
         }
     }
 }
