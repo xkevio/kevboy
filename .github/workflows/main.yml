@@ -2,8 +2,10 @@ name: Rust
 
 on:
   push:
+    tags:
+      - 'v**'
     branches:
-    - 'main'
+      - 'main'
 
 jobs:
   # build:
