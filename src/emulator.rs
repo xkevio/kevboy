@@ -64,6 +64,7 @@ impl Emulator {
         self.rom = rom.to_vec(); // TODO: redundant?
 
         if self.cgb {
+            self.cpu.cgb = true;
             self.cpu.registers = Registers::new_cgb();
             self.bus.ppu.enable_cgb();
         } else {

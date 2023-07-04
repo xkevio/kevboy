@@ -31,6 +31,9 @@ pub struct Bus {
     svbk: u8,
 
     hdma: Hdma,
+
+    pub double_speed: bool,
+    pub key1: u8,
 }
 
 // ----------------------------
@@ -67,6 +70,7 @@ impl MMIO for Bus {
                 0xFF0F => self.interrupt_handler.intf,
                 0xFF10..=0xFF3F => self.apu.read(address),
                 0xFF40..=0xFF4B | 0xFF68..=0xFF6B => self.ppu.read(address),
+                0xFF4D => self.key1,
                 0xFF4F => self.vbk,
                 0xFF50 => self.disable_boot_rom,
                 0xFF51..=0xFF55 => self.hdma.read(address),
@@ -110,6 +114,7 @@ impl MMIO for Bus {
                     self.ppu
                         .write_with_callback(address, value, || self.interrupt_handler.request_interrupt(Interrupt::STAT))
                 }
+                0xFF4D => self.key1 = (self.key1 & 0xFE) | (value & 1),
                 0xFF4F => self.vbk = 0xFE | value,
                 0xFF51..=0xFF55 => {
                     self.hdma.write(address, value);
@@ -157,6 +162,9 @@ impl Bus {
             svbk: 0xF8,
 
             hdma: Hdma::default(),
+
+            double_speed: false,
+            key1: 0x7E,
         }
     }
 
@@ -165,8 +173,10 @@ impl Bus {
     ///
     /// Advances timer, serial and PPU for now.
     pub fn tick(&mut self, cycles_passed: u16) {
+        let double_factor = if self.double_speed { 2 } else { 1 };
+
         let prev_tima = self.timer.tima;
-        self.timer.tick(cycles_passed);
+        self.timer.tick(cycles_passed * double_factor);
 
         if self.timer.irq && prev_tima == 0 {
             self.timer.reload_tima();
@@ -174,15 +184,18 @@ impl Bus {
         }
 
         // TODO: Clock in T-cycles or M-cycles?
-        for _ in 0..(cycles_passed * 4) {
+        for _ in 0..((cycles_passed * 4) / double_factor) {
             self.apu.tick((self.timer.div >> 8) as u8);
         }
 
-        self.serial
-            .tick(&mut self.interrupt_handler, cycles_passed, self.timer.div);
+        self.serial.tick(
+            &mut self.interrupt_handler,
+            cycles_passed * double_factor,
+            self.timer.div,
+        );
 
         // PPU ticks 4 times per M-cycle
-        for _ in 0..(cycles_passed * 4) {
+        for _ in 0..((cycles_passed * 4) / double_factor) {
             self.hdma.halted = true;
             for i in 0..0x10 {
                 self.hdma.bytes[i] = self.read(self.hdma.source() + i as u16);
@@ -218,6 +231,19 @@ impl Bus {
 
         self.write(address, bytes[0]);
         self.write(address + 1, bytes[1]);
+    }
+
+    pub fn change_speed(&mut self) {
+        let current_speed = (self.key1 & 0x80) >> 7;
+        if current_speed == 0 {
+            self.key1 = (self.key1 & 0x7F) | (1 << 7);
+            self.double_speed = true;
+        } else {
+            self.key1 = (self.key1 & 0x7F) & !(1 << 7);
+            self.double_speed = false;
+        }
+
+        self.key1 &= !1;
     }
 
     fn oam_dma_transfer(&mut self) {

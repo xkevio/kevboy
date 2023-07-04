@@ -608,7 +608,8 @@ impl App for Kevboy {
 /// Second impl block for the run function
 impl Kevboy {
     fn run(&mut self, ctx: &Context) {
-        while self.emulator.cycle_count < 17_556 {
+        let double_factor = if self.emulator.bus.double_speed { 2 } else { 1 };
+        while self.emulator.cycle_count < 17_556 * double_factor {
             self.emulator.bus.joypad.tick(
                 ctx,
                 &mut self.emulator.bus.interrupt_handler,

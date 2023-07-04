@@ -29,6 +29,7 @@ pub struct CPU {
     ei: bool,
     ime_req: bool,
     halt_bug: bool,
+    pub cgb: bool,
 }
 
 impl CPU {
@@ -42,6 +43,7 @@ impl CPU {
             ei: false,
             ime_req: false,
             halt_bug: false,
+            cgb: false,
         }
     }
 
@@ -418,7 +420,19 @@ impl CPU {
                     2
                 }
                 0x0F => { self.rrca(); 1 }
-                0x10 => { println!("STOP, not implemented"); bus.timer.div = 0;  1 }
+                0x10 => {
+                    if self.cgb {
+                        // Prepare for speed switch (bit 0 is set)
+                        if bus.key1 & 1 == 1 {
+                            bus.change_speed();
+                        }
+
+                        // TODO: pause for 2050 cycles?
+                    }
+
+                    bus.timer.div = 0;
+                    1
+                }
                 0x17 => { self.rla(); 1 }
                 0x18 => {
                     let value = self.fetch_operand(bus);
