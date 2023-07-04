@@ -69,7 +69,7 @@ pub struct PPU {
     dma_state: DMATransferState,
 
     internal_window_line: u8,
-    cgb: bool,
+    pub cgb: bool,
 }
 
 impl MMIO for PPU {
@@ -89,13 +89,21 @@ impl MMIO for PPU {
             0xFF4B => self.regs.wx,
             0xFF68 => self.bgpi,
             0xFF69 => {
-                let address = self.bgpi & 0x3F;
-                self.bg_cram[address as usize]
+                if self.cgb {
+                    let address = self.bgpi & 0x3F;
+                    self.bg_cram[address as usize]
+                } else {
+                    0xFF
+                }
             }
             0xFF6A => self.obpi,
             0xFF6B => {
-                let address = self.obpi & 0x3F;
-                self.obj_cram[address as usize]
+                if self.cgb {
+                    let address = self.obpi & 0x3F;
+                    self.obj_cram[address as usize]
+                } else {
+                    0xFF
+                }
             }
             _ => unreachable!(),
         }
@@ -162,23 +170,27 @@ impl MMIO for PPU {
             0xFF4B => self.regs.wx = value,
             0xFF68 => self.bgpi = value,
             0xFF69 => {
-                let auto_inc = (self.bgpi & 0x80) >> 7 != 0;
-                let address = self.bgpi & 0x3F;
-
-                if auto_inc {
-                    self.bgpi = (self.bgpi & 0x80) | (address + 1);
+                if self.cgb {
+                    let auto_inc = (self.bgpi & 0x80) >> 7 != 0;
+                    let address = self.bgpi & 0x3F;
+    
+                    if auto_inc {
+                        self.bgpi = (self.bgpi & 0x80) | (address + 1);
+                    }
+                    self.bg_cram[address as usize] = value;
                 }
-                self.bg_cram[address as usize] = value;
             }
             0xFF6A => self.obpi = value,
             0xFF6B => {
-                let auto_inc = (self.obpi & 0x80) >> 7 != 0;
-                let address = self.obpi & 0x3F;
-
-                if auto_inc {
-                    self.obpi = (self.obpi & 0x80) | (address + 1);
+                if self.cgb {
+                    let auto_inc = (self.obpi & 0x80) >> 7 != 0;
+                    let address = self.obpi & 0x3F;
+    
+                    if auto_inc {
+                        self.obpi = (self.obpi & 0x80) | (address + 1);
+                    }
+                    self.obj_cram[address as usize] = value;
                 }
-                self.obj_cram[address as usize] = value;
             }
             _ => unreachable!(),
         }
@@ -272,6 +284,7 @@ impl PPU {
                         self.regs.ly += 1;
 
                         if hdma.hdma_in_progress {
+                            println!("sssss");
                             for i in 0..0x10 {
                                 vram[vbk as usize][hdma.dest() as usize + i as usize] =
                                     hdma.bytes[i as usize];

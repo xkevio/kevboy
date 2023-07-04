@@ -49,7 +49,10 @@ impl MMIO for Bus {
 
         match address {
             0x0000..=0x7FFF => self.cartridge.read(address),
-            0x8000..=0x9FFF => self.vram[(self.vbk & 1) as usize][address as usize - 0x8000],
+            0x8000..=0x9FFF => {
+                let vbk = if self.ppu.cgb { self.vbk & 1 } else { 0 };
+                self.vram[vbk as usize][address as usize - 0x8000]
+            },
             0xA000..=0xBFFF => self.cartridge.read(address),
             0xC000..=0xCFFF => self.wram[0][address as usize & 0x0FFF],
             0xD000..=0xFDFF => {
@@ -59,7 +62,7 @@ impl MMIO for Bus {
                 }
 
                 let wram_bank = if self.svbk & 0x07 == 0 { 1 } else { (self.svbk & 0x07) as usize };
-                self.wram[wram_bank][address as usize & 0x0FFF]
+                self.wram[if self.ppu.cgb { wram_bank } else { 1 }][address as usize & 0x0FFF]
             }
             0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00],
             0xFEA0..=0xFEFF => 0xFF, // usage of this area not prohibited, may trigger oam corruption
@@ -90,7 +93,10 @@ impl MMIO for Bus {
 
         match address {
             0x0000..=0x7FFF => self.cartridge.write(address, value),
-            0x8000..=0x9FFF => self.vram[(self.vbk & 1) as usize][address as usize - 0x8000] = value,
+            0x8000..=0x9FFF => {
+                let vbk = if self.ppu.cgb { self.vbk & 1 } else { 0 };
+                self.vram[vbk as usize][address as usize - 0x8000] = value;
+            },
             0xA000..=0xBFFF => self.cartridge.write(address, value),
             0xC000..=0xCFFF => self.wram[0][address as usize & 0x0FFF] = value,
             0xD000..=0xFDFF => {
@@ -99,7 +105,7 @@ impl MMIO for Bus {
                     self.wram[0][address as usize & 0x0FFF] = value;
                 } else {
                     let wram_bank = if self.svbk & 0x07 == 0 { 1 } else { (self.svbk & 0x07) as usize };
-                    self.wram[wram_bank][address as usize & 0x0FFF] = value;
+                    self.wram[if self.ppu.cgb { wram_bank } else { 1 }][address as usize & 0x0FFF] = value;
                 }
             }
             0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00] = value,
@@ -115,10 +121,10 @@ impl MMIO for Bus {
                         .write_with_callback(address, value, || self.interrupt_handler.request_interrupt(Interrupt::STAT))
                 }
                 0xFF4D => self.key1 = (self.key1 & 0xFE) | (value & 1),
-                0xFF4F => self.vbk = 0xFE | value,
+                0xFF4F => if self.ppu.cgb { self.vbk = 0xFE | value },
                 0xFF51..=0xFF55 => {
                     self.hdma.write(address, value);
-                    if address == 0xFF55 {
+                    if address == 0xFF55 && self.ppu.cgb {
                         if (value & (1 << 7)) >> 7 == 0 && self.hdma.hdma_in_progress {
                             self.hdma.terminate_transfer();
                         } else {
@@ -126,7 +132,7 @@ impl MMIO for Bus {
                         }
                     }
                 },
-                0xFF70 => self.svbk = 0xF8 | (value & 0x07),
+                0xFF70 => if self.ppu.cgb { self.svbk = 0xF8 | (value & 0x07) },
                 _ => {}
             },
             0xFF80..=0xFFFE => self.hram[address as usize - 0xFF80] = value,
@@ -196,11 +202,13 @@ impl Bus {
 
         // PPU ticks 4 times per M-cycle
         for _ in 0..((cycles_passed * 4) / double_factor) {
-            self.hdma.halted = true;
-            for i in 0..0x10 {
-                self.hdma.bytes[i] = self.read(self.hdma.source() + i as u16);
+            if self.ppu.cgb {
+                self.hdma.halted = true;
+                for i in 0..0x10 {
+                    self.hdma.bytes[i] = self.read(self.hdma.source() + i as u16);
+                }
+                self.hdma.halted = false;
             }
-            self.hdma.halted = false;
 
             self.ppu.tick(
                 &mut self.vram,
