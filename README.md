@@ -1,8 +1,8 @@
 # WIP Game Boy & Game Boy Color Emulator
 
 <p float="left" align="middle">
-<img src="icon/crystal.png" alt="Kirby's Dream Land 2" width="450" />
-<img src="icon/shantae.png" alt="Kirby's Dream Land 2" width="350" />
+<img src="icon/crystal.png" alt="Pokemon Crystal Title Screen" width="450" />
+<img src="icon/shantae.png" alt="Shantae Title Screen" width="350" />
 </p>
 
 ## Installation

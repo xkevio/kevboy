@@ -1,4 +1,10 @@
 use eframe::epaint::Color32;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Washes out the colors while converting from rgb555.
+///
+/// Global variables bad yes but this is ok. :clueless:
+pub static COLOR_CORRECTION: AtomicBool = AtomicBool::new(false);
 
 /// Palette enum with the according palette register as the associated value.
 ///
@@ -76,10 +82,6 @@ pub(super) fn convert_to_color(value: u8, palette: Palette, cgb: bool, cram: &[u
             _ => unreachable!(),
         },
         Palette::OBP(obp) if cgb => {
-            if value == 0 {
-                return ScreenColor::FullColor(Color32::TRANSPARENT, 0);
-            }
-
             let palette = (obp * 8 + value * 2) as usize;
             let color_bytes = u16::from_le_bytes([cram[palette], cram[palette + 1]]);
             ScreenColor::FullColor(rgb555_to_color(color_bytes), value)
@@ -98,14 +100,27 @@ fn color_from_value(value: u8, index: u8) -> ScreenColor {
     }
 }
 
+// https://saveweb.github.io/near.sh/articles/video/color-emulation.html
 fn rgb555_to_color(rgb: u16) -> Color32 {
     let red = (rgb & 0x1F) as u8;
     let green = ((rgb >> 5) & 0x1F) as u8;
     let blue = ((rgb >> 10) & 0x1F) as u8;
 
-    Color32::from_rgb(
-        (red << 3) | (red >> 2),
-        (green << 3) | (green >> 2),
-        (blue << 3) | (blue >> 2),
-    )
+    if COLOR_CORRECTION.load(Ordering::SeqCst) {
+        let r = red as u16 * 26 + green as u16 * 4 + blue as u16 * 2;
+        let g = green as u16 * 24 + blue as u16 * 8;
+        let b = red as u16 * 6 + green as u16 * 4 + blue as u16 * 22;
+
+        let r = (r.min(960) >> 2) as u8;
+        let g = (g.min(960) >> 2) as u8;
+        let b = (b.min(960) >> 2) as u8;
+
+        Color32::from_rgb(r, g, b)
+    } else {
+        Color32::from_rgb(
+            (red << 3) | (red >> 2),
+            (green << 3) | (green >> 2),
+            (blue << 3) | (blue >> 2),
+        )
+    }
 }

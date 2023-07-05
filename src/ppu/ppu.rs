@@ -173,7 +173,7 @@ impl MMIO for PPU {
                 if self.cgb {
                     let auto_inc = (self.bgpi & 0x80) >> 7 != 0;
                     let address = self.bgpi & 0x3F;
-    
+
                     if auto_inc {
                         self.bgpi = (self.bgpi & 0x80) | (address + 1);
                     }
@@ -185,7 +185,7 @@ impl MMIO for PPU {
                 if self.cgb {
                     let auto_inc = (self.obpi & 0x80) >> 7 != 0;
                     let address = self.obpi & 0x3F;
-    
+
                     if auto_inc {
                         self.obpi = (self.obpi & 0x80) | (address + 1);
                     }

@@ -2,6 +2,7 @@ use std::{
     fs::{self, File},
     io::Write,
     path::PathBuf,
+    sync::atomic::Ordering,
 };
 
 use eframe::{
@@ -12,11 +13,11 @@ use eframe::{
     epaint::{Color32, ColorImage},
     App, CreationContext, Frame, Storage,
 };
-use egui::{Grid, ScrollArea, SelectableLabel, SidePanel, TextureHandle, Vec2};
+use egui::{Grid, Rgba, ScrollArea, SelectableLabel, SidePanel, TextureHandle, Vec2};
 use egui_extras::RetainedImage;
 use hashlink::LinkedHashSet;
+use rayon::prelude::*;
 
-use crate::emulator::Emulator;
 use crate::{
     cpu::registers::Flag,
     ppu::{
@@ -25,6 +26,7 @@ use crate::{
     },
     ui::memory_viewer::MemoryViewer,
 };
+use crate::{emulator::Emulator, ppu::color_palette::COLOR_CORRECTION};
 
 use super::{
     control_panel::ControlPanel,
@@ -57,6 +59,8 @@ pub struct Kevboy {
     right: bool,
 
     integer_scaling: (bool, u8),
+    blend: bool,
+    color_correction: bool,
 }
 
 /// Exposes two functions to create the overarching emulator object
@@ -88,6 +92,8 @@ impl Kevboy {
             right: false,
 
             integer_scaling: (false, 0),
+            blend: false,
+            color_correction: false,
         }
     }
 
@@ -118,6 +124,8 @@ impl Kevboy {
             right: false,
 
             integer_scaling: (false, 0),
+            blend: false,
+            color_correction: false,
         }
     }
 }
@@ -317,6 +325,11 @@ impl App for Kevboy {
                             ui.radio_value(scale, 5, "5x");
                         });
                     });
+
+                    ui.toggle_value(&mut self.blend, "Frame blending");
+                    if ui.toggle_value(&mut self.color_correction, "Color correction").clicked() {
+                        COLOR_CORRECTION.store(self.color_correction, Ordering::SeqCst);
+                    }
 
                     ui.separator();
 
@@ -629,7 +642,7 @@ impl Kevboy {
             .set_volume(self.sound_settings.volume / 100.0);
 
         // Normal frame buffer for frontend, gets swapped for double buffering
-        self.frame_buffer = self
+        let frame_buffer = self
             .emulator
             .bus
             .ppu
@@ -642,7 +655,15 @@ impl Kevboy {
                 ScreenColor::Black(_) => self.palette_picker.colors["Black"],
                 ScreenColor::FullColor(c, _) => c,
             })
-            .collect();
+            .collect::<Vec<_>>();
+
+        if self.blend {
+            let old_frame = self.frame_buffer.clone();
+            let new_frame = frame_buffer;
+            self.frame_buffer = self.frame_blend(&old_frame, &new_frame);
+        } else {
+            self.frame_buffer = frame_buffer;
+        }
 
         // Raw background tile map for debugging
         self.raw_fb = self
@@ -662,5 +683,19 @@ impl Kevboy {
 
         self.emulator.cycle_count = 0;
         self.emulator.bus.joypad.reset_pressed_keys();
+    }
+
+    fn frame_blend(&self, old: &[Color32], new: &[Color32]) -> Vec<Color32> {
+        new.par_iter()
+            .zip(old)
+            .map(|(n, o)| {
+                let nc = Rgba::from_srgba_premultiplied(n.r(), n.g(), n.b(), n.a());
+                let no = Rgba::from_srgba_premultiplied(o.r(), o.g(), o.b(), o.a());
+
+                let c = nc + (no.multiply(0.5));
+                let cc = c.to_srgba_unmultiplied();
+                Color32::from_rgba_premultiplied(cc[0], cc[1], cc[2], cc[3])
+            })
+            .collect()
     }
 }
