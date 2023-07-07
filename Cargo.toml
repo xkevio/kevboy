@@ -1,6 +1,6 @@
 [package]
 name = "kevboy"
-version = "0.1.0"
+version = "0.2.1"
 edition = "2021"
 
 # [profile.release]
@@ -13,6 +13,7 @@ egui = { version = "0.21.0", features = ["serde"] }
 egui_extras = { version = "0.21.0", features = ["svg"] }
 hashlink = { version = "0.8.1", features = ["serde", "serde_impl"] }
 image = "0.24.5"
+rayon = "1.7.0"
 rfd = "0.10.0"
 rodio = { version = "0.17.0", features = ["wasm-bindgen"] }
 serde = "1.0.152"

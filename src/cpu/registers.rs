@@ -35,11 +35,7 @@ impl Registers {
     ///
     /// `header_checksum` is `$014D` and is responsible for the Carry and Half-Carry flag.
     pub fn new_dmg(header_checksum: u8) -> Self {
-        let flag = if header_checksum == 0x00 {
-            0b10000000
-        } else {
-            0b10110000
-        };
+        let flag = if header_checksum == 0x00 { 0b10000000 } else { 0b10110000 };
 
         Self {
             A: 0x01,
@@ -55,14 +51,19 @@ impl Registers {
         }
     }
 
-    pub fn load_header_checksum(&mut self, header_checksum: u8) {
-        let flag = if header_checksum == 0x00 {
-            0b10000000
-        } else {
-            0b10110000
-        };
-
-        self.F = flag;
+    pub fn new_cgb() -> Self {
+        Self {
+            A: 0x11,
+            F: 0x80,
+            B: 0x00,
+            C: 0x00,
+            D: 0xFF,
+            E: 0x56,
+            H: 0x00,
+            L: 0x0D,
+            SP: 0xFFFE,
+            PC: 0x100,
+        }
     }
 
     pub fn get_af(&self) -> u16 {

@@ -44,7 +44,8 @@ impl MMIO for MBC5 {
             }
             0xA000..=0xBFFF => {
                 if self.ram_enable {
-                    self.external_ram[self.ram_bank_number as usize][address as usize - 0xA000]
+                    let l = self.external_ram.len() - 1;
+                    self.external_ram[self.ram_bank_number as usize & l][address as usize - 0xA000]
                 } else {
                     0xFF
                 }
@@ -74,8 +75,9 @@ impl MMIO for MBC5 {
             }
             0xA000..=0xBFFF => {
                 if self.ram_enable {
-                    self.external_ram[self.ram_bank_number as usize][address as usize - 0xA000] =
-                        value;
+                    let l = self.external_ram.len() - 1;
+                    self.external_ram[self.ram_bank_number as usize & l]
+                        [address as usize - 0xA000] = value;
                 }
             }
             _ => {}

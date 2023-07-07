@@ -5,6 +5,7 @@ use crate::cartridge::mbc::mbc3::MBC3;
 use crate::cartridge::mbc::mbc5::MBC5;
 use crate::cartridge::mbc::no_mbc::NoMBC;
 use crate::cpu::cpu::CPU;
+use crate::cpu::registers::Registers;
 use crate::mmu::bus::Bus;
 
 pub struct Emulator {
@@ -12,6 +13,7 @@ pub struct Emulator {
     pub bus: Bus,
     pub rom: Vec<u8>,
     pub cycle_count: u16,
+    cgb: bool,
 }
 
 impl Emulator {
@@ -21,6 +23,7 @@ impl Emulator {
             bus: Bus::new(),
             rom: Vec::new(),
             cycle_count: 0,
+            cgb: false,
         }
     }
 
@@ -56,9 +59,17 @@ impl Emulator {
             .or_else(|_| std::str::from_utf8(&rom[0x0134..=0x013E]))
             .unwrap();
 
+        self.cgb = rom[0x0143] == 0x80 || rom[0x0143] == 0xC0;
         self.bus.cartridge = Cartridge::new(cartridge_type, title);
         self.rom = rom.to_vec(); // TODO: redundant?
-        self.cpu.registers.load_header_checksum(rom[0x014D]);
+
+        if self.cgb {
+            self.cpu.cgb = true;
+            self.cpu.registers = Registers::new_cgb();
+            self.bus.ppu.enable_cgb();
+        } else {
+            self.cpu.registers = Registers::new_dmg(rom[0x014D]);
+        }
     }
 
     /// Step emulator by ticking CPU, advancing it one instruction and returning
@@ -147,5 +158,10 @@ impl Emulator {
         self.bus = Bus::new();
         self.rom = Vec::new();
         self.cycle_count = 0;
+        self.cgb = false;
+    }
+
+    pub fn is_cgb(&self) -> bool {
+        self.cgb
     }
 }

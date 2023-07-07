@@ -29,6 +29,7 @@ pub struct CPU {
     ei: bool,
     ime_req: bool,
     halt_bug: bool,
+    pub cgb: bool,
 }
 
 impl CPU {
@@ -42,6 +43,7 @@ impl CPU {
             ei: false,
             ime_req: false,
             halt_bug: false,
+            cgb: false,
         }
     }
 
@@ -418,7 +420,19 @@ impl CPU {
                     2
                 }
                 0x0F => { self.rrca(); 1 }
-                0x10 => { println!("STOP, not implemented"); bus.timer.div = 0;  1 }
+                0x10 => {
+                    if self.cgb {
+                        // Prepare for speed switch (bit 0 is set)
+                        if bus.key1 & 1 == 1 {
+                            bus.change_speed();
+                        }
+
+                        // TODO: pause for 2050 cycles?
+                    }
+
+                    bus.timer.div = 0;
+                    1
+                }
                 0x17 => { self.rla(); 1 }
                 0x18 => {
                     let value = self.fetch_operand(bus);
@@ -760,11 +774,7 @@ impl CPU {
         self.registers.set_flag(Flag::Carry, reg8 & 0b1 != 0);
 
         let bit7 = reg8 & (1 << 7);
-        let reg8 = if bit7 == 0 {
-            reg8 >> 1
-        } else {
-            (reg8 >> 1) | (1 << 7)
-        };
+        let reg8 = if bit7 == 0 { reg8 >> 1 } else { (reg8 >> 1) | (1 << 7) };
 
         self.registers.set_flag(Flag::Zero, reg8 == 0);
         self.registers.set_flag(Flag::Substraction, false);
@@ -799,7 +809,7 @@ impl CPU {
     }
 
     fn bit(&mut self, bit: u8, reg8: u8) {
-        let reg_bit = reg8 & (1 << bit);
+        let reg_bit = (reg8 & (1 << bit)) >> bit;
 
         self.registers.set_flag(Flag::Zero, reg_bit == 0);
         self.registers.set_flag(Flag::Substraction, false);
@@ -824,13 +834,9 @@ impl CPU {
             3 => self.registers.E = value,
             4 => self.registers.H = value,
             5 => self.registers.L = value,
-            6 => {
-                bus.write(self.registers.get_hl(), value);
-            }
+            6 => bus.write(self.registers.get_hl(), value),
             7 => self.registers.A = value,
-            _ => {
-                panic!("Invalid register!")
-            }
+            _ => panic!("Invalid register!"),
         }
     }
 
@@ -1294,7 +1300,7 @@ impl CPU {
                 self.registers.A = bus.read(self.registers.SP);
 
                 // clear out lower nibble since it should always be zero
-                self.registers.F &= !(1 | 1 << 1 | 1 << 2 | 1 << 3);
+                self.registers.F &= !(0xF);
             }
             _ => {}
         }

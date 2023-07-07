@@ -1,5 +1,6 @@
 use std::{
     path::PathBuf,
+    sync::atomic::Ordering,
     sync::mpsc::{Receiver, Sender},
 };
 
@@ -16,11 +17,11 @@ use eframe::{
     epaint::{Color32, ColorImage},
     App, CreationContext, Frame, Storage,
 };
-use egui::{Grid, ScrollArea, SelectableLabel, SidePanel, TextureHandle, Vec2};
+use egui::{Grid, Rgba, ScrollArea, SelectableLabel, SidePanel, TextureHandle, Vec2};
 use egui_extras::RetainedImage;
 use hashlink::LinkedHashSet;
+use rayon::prelude::*;
 
-use crate::emulator::Emulator;
 use crate::{
     cpu::registers::Flag,
     ppu::{
@@ -29,6 +30,7 @@ use crate::{
     },
     ui::memory_viewer::MemoryViewer,
 };
+use crate::{emulator::Emulator, ppu::color_palette::COLOR_CORRECTION};
 
 use super::{
     control_panel::ControlPanel,
@@ -61,6 +63,8 @@ pub struct Kevboy {
     right: bool,
 
     integer_scaling: (bool, u8),
+    blend: bool,
+    color_correction: bool,
     channels: (Sender<FileType>, Receiver<FileType>),
 }
 
@@ -98,6 +102,8 @@ impl Kevboy {
             right: false,
 
             integer_scaling: (false, 0),
+            blend: false,
+            color_correction: false,
             channels: std::sync::mpsc::channel(),
         }
     }
@@ -129,6 +135,8 @@ impl Kevboy {
             right: false,
 
             integer_scaling: (false, 0),
+            blend: false,
+            color_correction: false,
             channels: std::sync::mpsc::channel(),
         }
     }
@@ -213,6 +221,26 @@ impl App for Kevboy {
                 TextureOptions::NEAREST,
             ));
         }
+
+        // Load rom file when dropped on top of the GUI
+        ctx.input(|c| {
+            let dropped_files = &c.raw.dropped_files;
+            let first_rom = dropped_files
+                .iter()
+                .find(|file| {
+                    file.path.as_ref().is_some_and(|p| {
+                        let extension = p.extension().unwrap();
+                        extension == "gb" || extension == "gbc"
+                    })
+                })
+                .cloned();
+
+            if let Some(file) = first_rom {
+                let rom = fs::read(file.path.unwrap()).unwrap();
+                self.emulator.load_rom(&rom);
+                self.mem_viewer = MemoryViewer::new_with_memory(&rom, true);
+            }
+        });
 
         // ----------------------------------
         //      Start of UI declarations
@@ -438,6 +466,11 @@ impl App for Kevboy {
                             ui.radio_value(scale, 5, "5x");
                         });
                     });
+
+                    ui.toggle_value(&mut self.blend, "Frame blending");
+                    if ui.toggle_value(&mut self.color_correction, "Color correction").clicked() {
+                        COLOR_CORRECTION.store(self.color_correction, Ordering::SeqCst);
+                    }
 
                     ui.separator();
 
@@ -716,6 +749,20 @@ impl App for Kevboy {
 
                     image.show_size(ui, ui.available_size());
                 });
+
+            Window::new("💾 VRAM:0")
+                .open(&mut self.is_vram_window_open)
+                .show(ctx, |ui| {
+                    let mut mem = MemoryViewer::new_with_memory(&self.emulator.bus.vram[0], false);
+                    mem.show(ui);
+                });
+
+            Window::new("💾 VRAM:1")
+                .open(&mut self.is_vram_window_open)
+                .show(ctx, |ui| {
+                    let mut mem = MemoryViewer::new_with_memory(&self.emulator.bus.vram[1], false);
+                    mem.show(ui);
+                });
         }
 
         // ----------------------------------
@@ -732,7 +779,8 @@ impl App for Kevboy {
 /// Second impl block for the run function
 impl Kevboy {
     fn run(&mut self, ctx: &Context) {
-        while self.emulator.cycle_count < 17_556 {
+        let double_factor = if self.emulator.bus.double_speed { 2 } else { 1 };
+        while self.emulator.cycle_count < 17_556 * double_factor {
             self.emulator.bus.joypad.tick(
                 ctx,
                 &mut self.emulator.bus.interrupt_handler,
@@ -752,19 +800,28 @@ impl Kevboy {
             .set_volume(self.sound_settings.volume / 100.0);
 
         // Normal frame buffer for frontend, gets swapped for double buffering
-        self.frame_buffer = self
+        let frame_buffer = self
             .emulator
             .bus
             .ppu
             .ui_frame_buffer
             .iter()
             .map(|c| match *c {
-                ScreenColor::White => self.palette_picker.colors["White"],
-                ScreenColor::LightGray => self.palette_picker.colors["Light Gray"],
-                ScreenColor::Gray => self.palette_picker.colors["Gray"],
-                ScreenColor::Black => self.palette_picker.colors["Black"],
+                ScreenColor::White(_) => self.palette_picker.colors["White"],
+                ScreenColor::LightGray(_) => self.palette_picker.colors["Light Gray"],
+                ScreenColor::Gray(_) => self.palette_picker.colors["Gray"],
+                ScreenColor::Black(_) => self.palette_picker.colors["Black"],
+                ScreenColor::FullColor(c, _) => c,
             })
-            .collect();
+            .collect::<Vec<_>>();
+
+        if self.blend {
+            let old_frame = self.frame_buffer.clone();
+            let new_frame = frame_buffer;
+            self.frame_buffer = self.frame_blend(&old_frame, &new_frame);
+        } else {
+            self.frame_buffer = frame_buffer;
+        }
 
         // Raw background tile map for debugging
         self.raw_fb = self
@@ -774,14 +831,29 @@ impl Kevboy {
             .raw_frame
             .iter()
             .map(|c| match *c {
-                ScreenColor::White => self.palette_picker.colors["White"],
-                ScreenColor::LightGray => self.palette_picker.colors["Light Gray"],
-                ScreenColor::Gray => self.palette_picker.colors["Gray"],
-                ScreenColor::Black => self.palette_picker.colors["Black"],
+                ScreenColor::White(_) => self.palette_picker.colors["White"],
+                ScreenColor::LightGray(_) => self.palette_picker.colors["Light Gray"],
+                ScreenColor::Gray(_) => self.palette_picker.colors["Gray"],
+                ScreenColor::Black(_) => self.palette_picker.colors["Black"],
+                ScreenColor::FullColor(c, _) => c,
             })
             .collect();
 
         self.emulator.cycle_count = 0;
         self.emulator.bus.joypad.reset_pressed_keys();
+    }
+
+    fn frame_blend(&self, old: &[Color32], new: &[Color32]) -> Vec<Color32> {
+        new.par_iter()
+            .zip(old)
+            .map(|(n, o)| {
+                let nc = Rgba::from_srgba_premultiplied(n.r(), n.g(), n.b(), n.a());
+                let no = Rgba::from_srgba_premultiplied(o.r(), o.g(), o.b(), o.a());
+
+                let c = nc + (no.multiply(0.5));
+                let cc = c.to_srgba_unmultiplied();
+                Color32::from_rgba_premultiplied(cc[0], cc[1], cc[2], cc[3])
+            })
+            .collect()
     }
 }
