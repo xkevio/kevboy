@@ -23,7 +23,7 @@ jobs:
           override: true
       
       - name: Install needed dependency
-        run: sudo apt-get install -y librust-atk-dev libatk1.0-dev
+        run: sudo apt-get install -y librust-atk-dev libatk1.0-dev libgtk-3-dev
 
       - name: Build
         run: cargo build --workspace --release && strip target/release/kevboy && mv target/release/kevboy target/release/kevboy_amd64
