@@ -7,8 +7,20 @@
 
 ## Installation
 
+#### Pre-built Binaries:
+
+Check the [`Releases`](https://github.com/xkevio/kevboy/releases) page and download an already built version of `Kevboy`.
+
+Our CI workflow currently produces binaries for:
+
+- Windows 64-bit (`x86_64-pc-windows-msvc`)
+- Ubuntu 64-bit (`x86_64-unknown-linux-gnu`)
+- Mac OS x86 (`x86_64-apple-darwin`)
+
+#### Manual:
+
 - Clone with `git@github.com:xkevio/kevboy.git`
-- Build the project in release mode with `cargo`: `cargo build --release`
+- Build the project in release mode with [`cargo`](https://rustup.rs/): `cargo build --release`
 
 ## Usage
 
