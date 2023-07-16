@@ -572,7 +572,7 @@ impl PPU {
             }
         }
 
-        current_line.iter().map(|(a, _)| *a).collect()
+        current_line.into_iter().unzip::<ScreenColor, BgOamPrio, Vec<_>, Vec<_>>().0
     }
 
     /// Gets the 8 pixels of the current bg/win tile

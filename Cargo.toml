@@ -8,9 +8,9 @@ strip = true
 
 [dependencies]
 anyhow = "1.0.68"
-eframe = {version = "0.21.3", features = ["persistence"]}
-egui = { version = "0.21.0", features = ["serde"] }
-egui_extras = { version = "0.21.0", features = ["svg"] }
+eframe = {version = "0.22.0", features = ["persistence"]}
+egui = { version = "0.22.0", features = ["serde"] }
+egui_extras = { version = "0.22.0", features = ["svg"] }
 hashlink = { version = "0.8.1", features = ["serde", "serde_impl"] }
 image = "0.24.5"
 rayon = "1.7.0"
