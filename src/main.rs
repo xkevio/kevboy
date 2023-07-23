@@ -23,6 +23,8 @@ fn main() -> Result<()> {
     let icon = include_bytes!("../icon/icon.png");
     let icon_data = DynamicImage::from_decoder(PngDecoder::new(&icon[..])?)?;
 
+    // VSync needs to be disabled for unthrottling!
+    native_options.vsync = false;
     native_options.icon_data = Some(IconData {
         rgba: icon_data.as_bytes().to_vec(),
         width: 256,

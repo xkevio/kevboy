@@ -51,8 +51,12 @@ pub struct PPU {
     obj_cram: [u8; 64],
     obpi: u8,
 
+    /// Precompute for DMG
+    dmg_palette: [ScreenColor; 4],
+    obp_palette: [ScreenColor; 8],
+
     /// Contains pixels for the current line
-    current_line: Vec<ScreenColor>,
+    current_line: Vec<(ScreenColor, BgOamPrio)>,
     /// Contains up to 10 sprites that will be rendered this line
     current_sprites: Vec<Sprite>,
 
@@ -163,9 +167,25 @@ impl MMIO for PPU {
                 self.regs.dma = value;
                 self.dma_state = DMATransferState::Pending;
             }
-            0xFF47 => self.regs.bgp = value,
-            0xFF48 => self.regs.opb0 = value,
-            0xFF49 => self.regs.opb1 = value,
+            0xFF47 => {
+                self.regs.bgp = value;
+                self.dmg_palette[0] = color_from_value(value & 0b11, 0);
+                self.dmg_palette[1] = color_from_value((value & 0b1100) >> 2, 1);
+                self.dmg_palette[2] = color_from_value((value & 0b110000) >> 4, 2);
+                self.dmg_palette[3] = color_from_value((value & 0b11000000) >> 6, 3);
+            },
+            0xFF48 => {
+                self.regs.opb0 = value;
+                self.obp_palette[1] = color_from_value((value & 0b1100) >> 2, 1);
+                self.obp_palette[2] = color_from_value((value & 0b110000) >> 4, 2);
+                self.obp_palette[3] = color_from_value((value & 0b11000000) >> 6, 3);
+            },
+            0xFF49 => {
+                self.regs.opb1 = value;
+                self.obp_palette[5] = color_from_value((value & 0b1100) >> 2, 1);
+                self.obp_palette[6] = color_from_value((value & 0b110000) >> 4, 2);
+                self.obp_palette[7] = color_from_value((value & 0b11000000) >> 6, 3);
+            },
             0xFF4A => self.regs.wy = value,
             0xFF4B => self.regs.wx = value,
             0xFF68 => self.bgpi = value,
@@ -216,8 +236,11 @@ impl PPU {
             obj_cram: [0xFF; 64],
             obpi: 0xD0,
 
-            current_line: Vec::new(),
-            current_sprites: Vec::new(),
+            dmg_palette: [ScreenColor::White(0); 4],
+            obp_palette: [ScreenColor::White(0); 8],
+
+            current_line: Vec::with_capacity(256),
+            current_sprites: Vec::with_capacity(10),
 
             regs: PPURegisters::default(),
             dots: 0,
@@ -265,7 +288,7 @@ impl PPU {
                     if self.dots >= HBLANK_START {
                         // Important: draw later during Mode3 to fix parts of pocket.gb
                         if self.current_line.is_empty() {
-                            self.current_line = self.get_current_line(vram);
+                            self.get_current_line(vram);
                         }
 
                         if self.regs.is_window_visible()
@@ -345,7 +368,7 @@ impl PPU {
                             }
 
                             self.change_mode(Mode::Mode2, interrupt_handler);
-                            self.dump_bg_map(vram);
+                            // self.dump_bg_map(vram);
                         }
 
                         self.dots = -1;
@@ -395,44 +418,42 @@ impl PPU {
     // -------- DEBUGGING STUFF --------
 
     /// Dumps 256x256 BG map for the vram viewer
-    fn dump_bg_map(&mut self, vram: &[[u8; 0x2000]]) {
-        let mut current_line: Vec<(ScreenColor, BgOamPrio)> = Vec::with_capacity(256);
+    // fn dump_bg_map(&mut self, vram: &[[u8; 0x2000]]) {
+    //     let mut current_line: Vec<(ScreenColor, BgOamPrio)> = Vec::with_capacity(256);
 
-        for i in 0..=255 {
-            let unsigned_addressing = self.regs.lcdc & 0b10000 != 0;
+    //     for i in 0..=255 {
+    //         let unsigned_addressing = self.regs.lcdc & 0b10000 != 0;
 
-            let bg_tile_map_area =
-                if self.regs.lcdc & 0b1000 == 0 { 0x9800 - 0x8000 } else { 0x9C00 - 0x8000 };
+    //         let bg_tile_map_area =
+    //             if self.regs.lcdc & 0b1000 == 0 { 0x9800 - 0x8000 } else { 0x9C00 - 0x8000 };
 
-            let adjusted_y = i;
-            let tile_map_start = bg_tile_map_area + (((adjusted_y / 8) as usize) * 0x20);
+    //         let adjusted_y = i;
+    //         let tile_map_start = bg_tile_map_area + (((adjusted_y / 8) as usize) * 0x20);
 
-            for index in tile_map_start..=(tile_map_start + 0x1F) {
-                let tile_row = self.get_tile_row(vram, unsigned_addressing, index, adjusted_y);
-                current_line.extend(tile_row);
-            }
+    //         for index in tile_map_start..=(tile_map_start + 0x1F) {
+    //             let tile_row = self.get_tile_row::<false>(vram, unsigned_addressing, index, adjusted_y);
+    //             current_line.extend(tile_row);
+    //         }
 
-            for x in 0..256 {
-                self.raw_frame[i as usize * 256 + x] = current_line[x].0;
-            }
-            current_line.clear();
-        }
-    }
+    //         for x in 0..256 {
+    //             self.raw_frame[i as usize * 256 + x] = current_line[x].0;
+    //         }
+    //         current_line.clear();
+    //     }
+    // }
 
     // -------- ACTUAL RENDERING --------
-
-    fn get_current_line(&self, vram: &[[u8; 0x2000]]) -> Vec<ScreenColor> {
-        let bg_win_line = self.get_bg_win_line(vram);
-        let sprite_line = self.get_sprite_line(vram, &bg_win_line);
-
-        sprite_line
+    // FIXME: opts? used to return a new Vec, now modifies the self member directly to skip an allocation
+    fn get_current_line(&mut self, vram: &[[u8; 0x2000]]) {
+        self.get_bg_win_line(vram);
+        self.get_sprite_line(vram);
     }
 
-    fn get_bg_win_line(&self, vram: &[[u8; 0x2000]]) -> Vec<(ScreenColor, BgOamPrio)> {
-        let mut current_line: Vec<(ScreenColor, BgOamPrio)> = Vec::with_capacity(256);
+    fn get_bg_win_line(&mut self, vram: &[[u8; 0x2000]]) {
+        // let mut current_line: Vec<(ScreenColor, BgOamPrio)> = Vec::with_capacity(256);
 
         if !self.cgb && !self.regs.is_bg_enabled() {
-            return vec![(ScreenColor::White(0), BgOamPrio::BGPrio); 256];
+            self.current_line = vec![(ScreenColor::White(0), BgOamPrio::BGPrio); 256];
         }
 
         let unsigned_addressing = self.regs.lcdc & 0b10000 != 0;
@@ -446,12 +467,13 @@ impl PPU {
         let tile_map_start = bg_tile_map_area + (((adjusted_y / 8) as usize) * 0x20);
 
         for index in tile_map_start..=(tile_map_start + 0x1F) {
-            let tile_row = self.get_tile_row(vram, unsigned_addressing, index, adjusted_y);
-            current_line.extend(tile_row);
+            // currently hardcoded to false to just test Tetris
+            let tile_row = self.get_tile_row::<false>(vram, unsigned_addressing, index, adjusted_y);
+            self.current_line.extend(tile_row);
         }
 
         // Apply SCX to the current scanline in the background layer
-        current_line.rotate_left(self.regs.scx as usize);
+        self.current_line.rotate_left(self.regs.scx as usize);
 
         // Draw window over bg if enabled and visible
         if self.regs.is_window_enabled()
@@ -468,19 +490,20 @@ impl PPU {
             let tile_map_start = win_tile_map_area + (((win_y / 8) as usize) * 0x20);
 
             for (j, index) in (tile_map_start..=(tile_map_start + 0x1F)).enumerate() {
-                let tile_row = self.get_tile_row(vram, unsigned_addressing, index, win_y);
+                // currently hardcoded to false to just test Tetris
+                let tile_row = self.get_tile_row::<false>(vram, unsigned_addressing, index, win_y);
 
                 for i in 0..8 {
                     let signed_wx = self.regs.wx as i16;
                     let win_index = (signed_wx - 7) + i as i16 + (j as i16 * 8);
                     if (0..256).contains(&win_index) {
-                        current_line[win_index as usize] = tile_row[i];
+                        self.current_line[win_index as usize] = tile_row[i];
                     }
                 }
             }
         }
 
-        current_line
+        // current_line
     }
 
     // -------------------------
@@ -488,11 +511,11 @@ impl PPU {
     // -------------------------
 
     fn get_sprite_line(
-        &self,
+        &mut self,
         vram: &[[u8; 0x2000]],
-        current_line: &[(ScreenColor, BgOamPrio)],
-    ) -> Vec<ScreenColor> {
-        let mut current_line: Vec<(ScreenColor, BgOamPrio)> = Vec::from(current_line);
+        // mut current_line: Vec<(ScreenColor, BgOamPrio)>,
+    ) {
+        // let mut current_line: Vec<(ScreenColor, BgOamPrio)> = Vec::from(current_line);
 
         if self.regs.is_obj_enabled() {
             for sprite in self.current_sprites.iter().rev() {
@@ -560,25 +583,27 @@ impl PPU {
                     if (msb << 1 | lsb) != 0 {
                         let color = self.resolve_bg_to_obj_prio(
                             sprite,
-                            current_line[x].0,
+                            self.current_line[x].0,
                             msb << 1 | lsb,
                             palette,
-                            current_line[x].1,
+                            self.current_line[x].1,
                         );
 
-                        current_line[x].0 = color;
+                        self.current_line[x].0 = color;
                     }
                 }
             }
         }
 
-        current_line.into_iter().unzip::<ScreenColor, BgOamPrio, Vec<_>, Vec<_>>().0
+        // current_line
     }
 
     /// Gets the 8 pixels of the current bg/win tile
     ///
     /// Can't use it for sprites because of the obj prio bit and flip bits
-    fn get_tile_row(
+    /// 
+    /// Templated so that the checks are done at compile time.
+    fn get_tile_row<const CGB: bool>(
         &self,
         vram: &[[u8; 0x2000]],
         unsigned_addressing: bool,
@@ -588,11 +613,11 @@ impl PPU {
         let mut current_line: [(ScreenColor, BgOamPrio); 8] =
             [(ScreenColor::White(0), BgOamPrio::BGPrio); 8];
 
-        let tile_attribute = TileAttribute::from(vram[1][index]);
+        let tile_attribute = if CGB { Some(TileAttribute::from(vram[1][index])) } else { None };
 
-        let vbk = if self.cgb { tile_attribute.vram_bank as usize } else { 0 };
-        let bgp = if self.cgb { tile_attribute.bgp } else { self.regs.bgp };
-        let v_flip = if self.cgb { tile_attribute.v_flip } else { false };
+        let vbk = if CGB { tile_attribute.unwrap().vram_bank as usize } else { 0 };
+        let bgp = if CGB { tile_attribute.unwrap().bgp } else { self.regs.bgp };
+        let v_flip = if CGB { tile_attribute.unwrap().v_flip } else { false };
 
         let line_index = (vram[0][index] as usize) * 16;
         let ly_bytes = if !v_flip { (y % 8) as usize } else { (7 - (y % 8)) as usize };
@@ -623,11 +648,11 @@ impl PPU {
         for i in (0..8).rev() {
             let lsb = (first_byte & (1 << i)) >> i;
             let msb = (second_byte & (1 << i)) >> i;
-            let h_index = if tile_attribute.h_flip && self.cgb { i } else { 7 - i };
+            // let h_index = if tile_attribute.unwrap().h_flip && CGB { i } else { 7 - i };
 
-            current_line[h_index] = (
-                convert_to_color(msb << 1 | lsb, Palette::BGP(bgp), self.cgb, &self.bg_cram),
-                tile_attribute.bg_to_oam,
+            current_line[7 - i] = (
+                self.dmg_palette[(msb << 1 | lsb) as usize],
+                BgOamPrio::BGPrio,
             );
         }
 
@@ -667,7 +692,8 @@ impl PPU {
             }
         } else {
             if sprite.is_obj_prio() {
-                return convert_to_color(index, palette, false, &self.obj_cram);
+                return self.obp_palette[(index + (sprite.get_dmg_obp_num() * 4)) as usize];
+                // return convert_to_color(index, palette, false, &self.obj_cram);
             } else {
                 if matches!(
                     current_color,
@@ -676,7 +702,8 @@ impl PPU {
                         | ScreenColor::Gray(0)
                         | ScreenColor::Black(0)
                 ) {
-                    return convert_to_color(index, palette, false, &self.obj_cram);
+                    return self.obp_palette[(index + (sprite.get_dmg_obp_num() * 4)) as usize];
+                    // return convert_to_color(index, palette, false, &self.obj_cram);
                 } else {
                     return current_color;
                 }
@@ -688,7 +715,7 @@ impl PPU {
         let y = self.regs.ly as usize;
 
         for i in 0..LCD_WIDTH {
-            self.frame_buffer[y * LCD_WIDTH + i] = self.current_line[i];
+            self.frame_buffer[y * LCD_WIDTH + i] = self.current_line[i].0;
         }
 
         self.current_line.clear();

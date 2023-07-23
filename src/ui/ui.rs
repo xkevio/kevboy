@@ -13,10 +13,9 @@ use eframe::{
     epaint::{Color32, ColorImage},
     App, CreationContext, Frame, Storage,
 };
-use egui::{Grid, Rgba, ScrollArea, SelectableLabel, SidePanel, TextureHandle, Vec2};
+use egui::{Grid, /*Rgba,*/ ScrollArea, SelectableLabel, SidePanel, TextureHandle, Vec2};
 use egui_extras::RetainedImage;
 use hashlink::LinkedHashSet;
-use rayon::prelude::*;
 
 use crate::{
     cpu::registers::Flag,
@@ -144,7 +143,7 @@ impl App for Kevboy {
     /// UI declarations and functionality, called every frame and also runs the emulator
     fn update(&mut self, ctx: &Context, frame: &mut Frame) {
         self.history.update(ctx, frame);
-        frame.set_window_title(&format!("Kevboy ({} fps)", self.history.fps()));
+        frame.set_window_title(&format!("Kevboy ({:.2} fps)", self.history.fps()));
 
         if let Some(tex) = &mut self.texture {
             tex.set(
@@ -633,13 +632,16 @@ impl Kevboy {
             self.emulator.cycle_count += self.emulator.step() as u16;
         }
 
+        // Ignore everything but the main buffer for now,
+        // no APU, debug UI or frame blending options.
+
         // `sink` is a tuple of (Sink, SourcesQueueOutput<f32>)
-        self.emulator
-            .bus
-            .apu
-            .sink
-            .0
-            .set_volume(self.sound_settings.volume / 100.0);
+        // self.emulator
+        //     .bus
+        //     .apu
+        //     .sink
+        //     .0
+        //     .set_volume(self.sound_settings.volume / 100.0);
 
         // Normal frame buffer for frontend, gets swapped for double buffering
         let frame_buffer = self
@@ -657,45 +659,45 @@ impl Kevboy {
             })
             .collect::<Vec<_>>();
 
-        if self.blend {
-            let old_frame = self.frame_buffer.clone();
-            let new_frame = frame_buffer;
-            self.frame_buffer = self.frame_blend(&old_frame, &new_frame);
-        } else {
+        // if self.blend {
+        //     let old_frame = self.frame_buffer.clone();
+        //     let new_frame = frame_buffer;
+        //     self.frame_buffer = self.frame_blend(&old_frame, &new_frame);
+        // } else {
             self.frame_buffer = frame_buffer;
-        }
+        // }
 
         // Raw background tile map for debugging
-        self.raw_fb = self
-            .emulator
-            .bus
-            .ppu
-            .raw_frame
-            .iter()
-            .map(|c| match *c {
-                ScreenColor::White(_) => self.palette_picker.colors["White"],
-                ScreenColor::LightGray(_) => self.palette_picker.colors["Light Gray"],
-                ScreenColor::Gray(_) => self.palette_picker.colors["Gray"],
-                ScreenColor::Black(_) => self.palette_picker.colors["Black"],
-                ScreenColor::FullColor(c, _) => c,
-            })
-            .collect();
+        // self.raw_fb = self
+        //     .emulator
+        //     .bus
+        //     .ppu
+        //     .raw_frame
+        //     .iter()
+        //     .map(|c| match *c {
+        //         ScreenColor::White(_) => self.palette_picker.colors["White"],
+        //         ScreenColor::LightGray(_) => self.palette_picker.colors["Light Gray"],
+        //         ScreenColor::Gray(_) => self.palette_picker.colors["Gray"],
+        //         ScreenColor::Black(_) => self.palette_picker.colors["Black"],
+        //         ScreenColor::FullColor(c, _) => c,
+        //     })
+        //     .collect();
 
         self.emulator.cycle_count = 0;
         self.emulator.bus.joypad.reset_pressed_keys();
     }
 
-    fn frame_blend(&self, old: &[Color32], new: &[Color32]) -> Vec<Color32> {
-        new.par_iter()
-            .zip(old)
-            .map(|(n, o)| {
-                let nc = Rgba::from_srgba_premultiplied(n.r(), n.g(), n.b(), n.a());
-                let no = Rgba::from_srgba_premultiplied(o.r(), o.g(), o.b(), o.a());
+    // fn frame_blend(&self, old: &[Color32], new: &[Color32]) -> Vec<Color32> {
+    //     new.par_iter()
+    //         .zip(old)
+    //         .map(|(n, o)| {
+    //             let nc = Rgba::from_srgba_premultiplied(n.r(), n.g(), n.b(), n.a());
+    //             let no = Rgba::from_srgba_premultiplied(o.r(), o.g(), o.b(), o.a());
 
-                let c = nc + (no.multiply(0.5));
-                let cc = c.to_srgba_unmultiplied();
-                Color32::from_rgba_premultiplied(cc[0], cc[1], cc[2], cc[3])
-            })
-            .collect()
-    }
+    //             let c = nc + (no.multiply(0.5));
+    //             let cc = c.to_srgba_unmultiplied();
+    //             Color32::from_rgba_premultiplied(cc[0], cc[1], cc[2], cc[3])
+    //         })
+    //         .collect()
+    // }
 }

@@ -61,6 +61,8 @@ impl Chocolate {
 }
 
 /// Takes the color value byte and transforms into the correct color based on the palette register
+/// 
+/// The non-CGB paths are currently ignored in place of precomputing the palette.
 pub(super) fn convert_to_color(value: u8, palette: Palette, cgb: bool, cram: &[u8]) -> ScreenColor {
     match palette {
         Palette::BGP(bgp) if !cgb => match value {
@@ -90,7 +92,8 @@ pub(super) fn convert_to_color(value: u8, palette: Palette, cgb: bool, cram: &[u
     }
 }
 
-fn color_from_value(value: u8, index: u8) -> ScreenColor {
+// Used for precomputing DMG palettes.
+pub(super) fn color_from_value(value: u8, index: u8) -> ScreenColor {
     match value {
         0b00 => ScreenColor::White(index),
         0b01 => ScreenColor::LightGray(index),

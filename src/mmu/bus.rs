@@ -47,15 +47,17 @@ impl MMIO for Bus {
             self.tick(1);
         }
 
-        match address {
-            0x0000..=0x7FFF => self.cartridge.read(address),
-            0x8000..=0x9FFF => {
+        // Only matching on the top 4 bits seems to give better codegen and a
+        // better jump table with less checks. (this function gets called a lot!)
+        match (address & 0xF000) >> 12 {
+            0x0..=0x7 => self.cartridge.read(address),
+            0x8 | 0x9 => {
                 let vbk = if self.ppu.cgb { self.vbk & 1 } else { 0 };
                 self.vram[vbk as usize][address as usize - 0x8000]
             },
-            0xA000..=0xBFFF => self.cartridge.read(address),
-            0xC000..=0xCFFF => self.wram[0][address as usize & 0x0FFF],
-            0xD000..=0xFDFF => {
+            0xA | 0xB => self.cartridge.read(address),
+            0xC => self.wram[0][address as usize & 0x0FFF],
+            0xD | 0xE => {
                 // Echo RAM.
                 if address > 0xDFFF && address < 0xF000 {
                     return self.wram[0][address as usize & 0x0FFF];
@@ -64,24 +66,35 @@ impl MMIO for Bus {
                 let wram_bank = if self.svbk & 0x07 == 0 { 1 } else { (self.svbk & 0x07) as usize };
                 self.wram[if self.ppu.cgb { wram_bank } else { 1 }][address as usize & 0x0FFF]
             }
-            0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00],
-            0xFEA0..=0xFEFF => 0xFF, // usage of this area not prohibited, may trigger oam corruption
-            0xFF00..=0xFF7F => match address {
-                0xFF00 => self.joypad.read(address),
-                0xFF01 | 0xFF02 => self.serial.read(address),
-                0xFF04..=0xFF07 => self.timer.read(address),
-                0xFF0F => self.interrupt_handler.intf,
-                0xFF10..=0xFF3F => self.apu.read(address),
-                0xFF40..=0xFF4B | 0xFF68..=0xFF6B => self.ppu.read(address),
-                0xFF4D => self.key1,
-                0xFF4F => self.vbk,
-                0xFF50 => self.disable_boot_rom,
-                0xFF51..=0xFF55 => self.hdma.read(address),
-                0xFF70 => self.svbk,
-                _ => 0xFF,
-            },
-            0xFF80..=0xFFFE => self.hram[address as usize - 0xFF80],
-            0xFFFF => self.interrupt_handler.inte,
+            0xF => {
+                if address < 0xFE00 {
+                    let wram_bank = if self.svbk & 0x07 == 0 { 1 } else { (self.svbk & 0x07) as usize };
+                    return self.wram[if self.ppu.cgb { wram_bank } else { 1 }][address as usize & 0x0FFF];
+                }
+
+                match address & 0x0FFF {
+                    0xE00..=0xE9F => self.oam[address as usize - 0xFE00],
+                    0xEA0..=0xEFF => 0xFF, // usage of this area not prohibited, may trigger oam corruption
+                    0xF00..=0xF7F => match address {
+                        0xFF00 => self.joypad.read(address),
+                        0xFF01 | 0xFF02 => self.serial.read(address),
+                        0xFF04..=0xFF07 => self.timer.read(address),
+                        0xFF0F => self.interrupt_handler.intf,
+                        0xFF10..=0xFF3F => self.apu.read(address),
+                        0xFF40..=0xFF4B | 0xFF68..=0xFF6B => self.ppu.read(address),
+                        0xFF4D => self.key1,
+                        0xFF4F => self.vbk,
+                        0xFF50 => self.disable_boot_rom,
+                        0xFF51..=0xFF55 => self.hdma.read(address),
+                        0xFF70 => self.svbk,
+                        _ => 0xFF,
+                    },
+                    0xF80..=0xFFE => self.hram[address as usize - 0xFF80],
+                    0xFFF => self.interrupt_handler.inte,
+                    _ => unreachable!()
+                }
+            }
+            _ => unreachable!()
         }
     }
 
@@ -91,15 +104,15 @@ impl MMIO for Bus {
             self.tick(1);
         }
 
-        match address {
-            0x0000..=0x7FFF => self.cartridge.write(address, value),
-            0x8000..=0x9FFF => {
+        match (address & 0xF000) >> 12 {
+            0x0..=0x7 => self.cartridge.write(address, value),
+            0x8 | 0x9 => {
                 let vbk = if self.ppu.cgb { self.vbk & 1 } else { 0 };
                 self.vram[vbk as usize][address as usize - 0x8000] = value;
             },
-            0xA000..=0xBFFF => self.cartridge.write(address, value),
-            0xC000..=0xCFFF => self.wram[0][address as usize & 0x0FFF] = value,
-            0xD000..=0xFDFF => {
+            0xA | 0xB => self.cartridge.write(address, value),
+            0xC => self.wram[0][address as usize & 0x0FFF] = value,
+            0xD | 0xE => {
                 // Echo RAM.
                 if address > 0xDFFF && address < 0xF000 {
                     self.wram[0][address as usize & 0x0FFF] = value;
@@ -108,35 +121,47 @@ impl MMIO for Bus {
                     self.wram[if self.ppu.cgb { wram_bank } else { 1 }][address as usize & 0x0FFF] = value;
                 }
             }
-            0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00] = value,
-            0xFEA0..=0xFEFF => {} // not usable area
-            0xFF00..=0xFF7F => match address {
-                0xFF00 => self.joypad.write(address, value),
-                0xFF01 | 0xFF02 => self.serial.write(address, value),
-                0xFF04..=0xFF07 => self.timer.write(address, value),
-                0xFF0F => self.interrupt_handler.intf = value | 0b1110_0000,
-                0xFF10..=0xFF3F => self.apu.write(address, value),
-                0xFF40..=0xFF4B | 0xFF68..=0xFF6B => {
-                    self.ppu
-                        .write_with_callback(address, value, || self.interrupt_handler.request_interrupt(Interrupt::STAT))
+            0xF => {
+                if address < 0xFE00 {
+                    let wram_bank = if self.svbk & 0x07 == 0 { 1 } else { (self.svbk & 0x07) as usize };
+                    self.wram[if self.ppu.cgb { wram_bank } else { 1 }][address as usize & 0x0FFF] = value;
+                    return;
                 }
-                0xFF4D => self.key1 = (self.key1 & 0xFE) | (value & 1),
-                0xFF4F => if self.ppu.cgb { self.vbk = 0xFE | value },
-                0xFF51..=0xFF55 => {
-                    self.hdma.write(address, value);
-                    if address == 0xFF55 && self.ppu.cgb {
-                        if (value & (1 << 7)) >> 7 == 0 && self.hdma.hdma_in_progress {
-                            self.hdma.terminate_transfer();
-                        } else {
-                            self.vram_dma_transfer();
+
+                match address & 0x0FFF {
+                    0xE00..=0xE9F => self.oam[address as usize - 0xFE00] = value,
+                    0xEA0..=0xEFF => {} // not usable area
+                    0xF00..=0xF7F => match address {
+                        0xFF00 => self.joypad.write(address, value),
+                        0xFF01 | 0xFF02 => self.serial.write(address, value),
+                        0xFF04..=0xFF07 => self.timer.write(address, value),
+                        0xFF0F => self.interrupt_handler.intf = value | 0b1110_0000,
+                        0xFF10..=0xFF3F => self.apu.write(address, value),
+                        0xFF40..=0xFF4B | 0xFF68..=0xFF6B => {
+                            self.ppu
+                                .write_with_callback(address, value, || self.interrupt_handler.request_interrupt(Interrupt::STAT))
                         }
-                    }
-                },
-                0xFF70 => if self.ppu.cgb { self.svbk = 0xF8 | (value & 0x07) },
-                _ => {}
-            },
-            0xFF80..=0xFFFE => self.hram[address as usize - 0xFF80] = value,
-            0xFFFF => self.interrupt_handler.inte = value,
+                        0xFF4D => self.key1 = (self.key1 & 0xFE) | (value & 1),
+                        0xFF4F => if self.ppu.cgb { self.vbk = 0xFE | value },
+                        0xFF51..=0xFF55 => {
+                            self.hdma.write(address, value);
+                            if address == 0xFF55 && self.ppu.cgb {
+                                if (value & (1 << 7)) >> 7 == 0 && self.hdma.hdma_in_progress {
+                                    self.hdma.terminate_transfer();
+                                } else {
+                                    self.vram_dma_transfer();
+                                }
+                            }
+                        },
+                        0xFF70 => if self.ppu.cgb { self.svbk = 0xF8 | (value & 0x07) },
+                        _ => {}
+                    },
+                    0xF80..=0xFFE => self.hram[address as usize - 0xFF80] = value,
+                    0xFFF => self.interrupt_handler.inte = value,
+                    _ => unreachable!()
+                }
+            }
+            _ => unreachable!()
         }
     }
 }
@@ -189,10 +214,11 @@ impl Bus {
             self.interrupt_handler.request_interrupt(Interrupt::Timer);
         }
 
+        // Disable APU for testing and unthrottling!
         // TODO: Clock in T-cycles or M-cycles?
-        for _ in 0..((cycles_passed * 4) / double_factor) {
-            self.apu.tick((self.timer.div >> 8) as u8);
-        }
+        // for _ in 0..((cycles_passed * 4) / double_factor) {
+        //     self.apu.tick((self.timer.div >> 8) as u8);
+        // }
 
         self.serial.tick(
             &mut self.interrupt_handler,

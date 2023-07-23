@@ -80,6 +80,7 @@ impl Default for Cartridge {
     }
 }
 
+// This could be optimized, currently: enum dispatch (still better than dynamic dispatch).
 impl MMIO for Cartridge {
     fn read(&mut self, address: u16) -> u8 {
         match &mut self.cartridge_type {
