@@ -173,19 +173,19 @@ impl MMIO for PPU {
                 self.dmg_palette[1] = color_from_value((value & 0b1100) >> 2, 1);
                 self.dmg_palette[2] = color_from_value((value & 0b110000) >> 4, 2);
                 self.dmg_palette[3] = color_from_value((value & 0b11000000) >> 6, 3);
-            },
+            }
             0xFF48 => {
                 self.regs.opb0 = value;
                 self.obp_palette[1] = color_from_value((value & 0b1100) >> 2, 1);
                 self.obp_palette[2] = color_from_value((value & 0b110000) >> 4, 2);
                 self.obp_palette[3] = color_from_value((value & 0b11000000) >> 6, 3);
-            },
+            }
             0xFF49 => {
                 self.regs.opb1 = value;
                 self.obp_palette[5] = color_from_value((value & 0b1100) >> 2, 1);
                 self.obp_palette[6] = color_from_value((value & 0b110000) >> 4, 2);
                 self.obp_palette[7] = color_from_value((value & 0b11000000) >> 6, 3);
-            },
+            }
             0xFF4A => self.regs.wy = value,
             0xFF4B => self.regs.wx = value,
             0xFF68 => self.bgpi = value,
@@ -468,7 +468,7 @@ impl PPU {
 
         for index in tile_map_start..=(tile_map_start + 0x1F) {
             // currently hardcoded to false to just test Tetris
-            let tile_row = self.get_tile_row::<false>(vram, unsigned_addressing, index, adjusted_y);
+            let tile_row = self.get_tile_row::<true>(vram, unsigned_addressing, index, adjusted_y);
             self.current_line.extend(tile_row);
         }
 
@@ -491,7 +491,7 @@ impl PPU {
 
             for (j, index) in (tile_map_start..=(tile_map_start + 0x1F)).enumerate() {
                 // currently hardcoded to false to just test Tetris
-                let tile_row = self.get_tile_row::<false>(vram, unsigned_addressing, index, win_y);
+                let tile_row = self.get_tile_row::<true>(vram, unsigned_addressing, index, win_y);
 
                 for i in 0..8 {
                     let signed_wx = self.regs.wx as i16;
@@ -601,7 +601,7 @@ impl PPU {
     /// Gets the 8 pixels of the current bg/win tile
     ///
     /// Can't use it for sprites because of the obj prio bit and flip bits
-    /// 
+    ///
     /// Templated so that the checks are done at compile time.
     fn get_tile_row<const CGB: bool>(
         &self,
@@ -648,11 +648,11 @@ impl PPU {
         for i in (0..8).rev() {
             let lsb = (first_byte & (1 << i)) >> i;
             let msb = (second_byte & (1 << i)) >> i;
-            // let h_index = if tile_attribute.unwrap().h_flip && CGB { i } else { 7 - i };
+            let h_index = if tile_attribute.unwrap().h_flip && CGB { i } else { 7 - i };
 
-            current_line[7 - i] = (
-                self.dmg_palette[(msb << 1 | lsb) as usize],
-                BgOamPrio::BGPrio,
+            current_line[h_index] = (
+                convert_to_color(msb << 1 | lsb, Palette::BGP(bgp), true, &self.bg_cram),
+                tile_attribute.unwrap().bg_to_oam,
             );
         }
 

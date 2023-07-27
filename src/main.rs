@@ -30,6 +30,7 @@ fn main() -> Result<()> {
         width: 256,
         height: 256,
     });
+    native_options.centered = true;
 
     eframe::run_native(
         "Kevboy",

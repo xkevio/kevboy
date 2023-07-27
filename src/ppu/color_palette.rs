@@ -61,28 +61,28 @@ impl Chocolate {
 }
 
 /// Takes the color value byte and transforms into the correct color based on the palette register
-/// 
+///
 /// The non-CGB paths are currently ignored in place of precomputing the palette.
 pub(super) fn convert_to_color(value: u8, palette: Palette, cgb: bool, cram: &[u8]) -> ScreenColor {
     match palette {
-        Palette::BGP(bgp) if !cgb => match value {
-            0b00 => color_from_value(bgp & 0b11, value),
-            0b01 => color_from_value((bgp & 0b1100) >> 2, value),
-            0b10 => color_from_value((bgp & 0b110000) >> 4, value),
-            0b11 => color_from_value((bgp & 0b11000000) >> 6, value),
-            _ => unreachable!(),
-        },
+        // Palette::BGP(bgp) if !cgb => match value {
+        //     0b00 => color_from_value(bgp & 0b11, value),
+        //     0b01 => color_from_value((bgp & 0b1100) >> 2, value),
+        //     0b10 => color_from_value((bgp & 0b110000) >> 4, value),
+        //     0b11 => color_from_value((bgp & 0b11000000) >> 6, value),
+        //     _ => unreachable!(),
+        // },
         Palette::BGP(bgp) if cgb => {
             let palette = (bgp * 8 + value * 2) as usize;
             let color_bytes = u16::from_le_bytes([cram[palette], cram[palette + 1]]);
             ScreenColor::FullColor(rgb555_to_color(color_bytes), value)
         }
-        Palette::OBP(obp) if !cgb => match value {
-            0b01 => color_from_value((obp & 0b1100) >> 2, value),
-            0b10 => color_from_value((obp & 0b110000) >> 4, value),
-            0b11 => color_from_value((obp & 0b11000000) >> 6, value),
-            _ => unreachable!(),
-        },
+        // Palette::OBP(obp) if !cgb => match value {
+        //     0b01 => color_from_value((obp & 0b1100) >> 2, value),
+        //     0b10 => color_from_value((obp & 0b110000) >> 4, value),
+        //     0b11 => color_from_value((obp & 0b11000000) >> 6, value),
+        //     _ => unreachable!(),
+        // },
         Palette::OBP(obp) if cgb => {
             let palette = (obp * 8 + value * 2) as usize;
             let color_bytes = u16::from_le_bytes([cram[palette], cram[palette + 1]]);

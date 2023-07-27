@@ -60,7 +60,7 @@ impl Emulator {
             .unwrap();
 
         self.cgb = rom[0x0143] == 0x80 || rom[0x0143] == 0xC0;
-        self.bus.cartridge = Cartridge::new(cartridge_type, title);
+        self.bus.cartridge = Cartridge::new(cartridge_type, title, MBC3::new(rom));
         self.rom = rom.to_vec(); // TODO: redundant?
 
         if self.cgb {

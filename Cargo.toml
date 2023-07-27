@@ -4,18 +4,18 @@ version = "0.2.1"
 edition = "2021"
 
 [profile.release]
-debug = true
+strip = true
+lto = true
+codegen-units = 1
 
 [dependencies]
 anyhow = "1.0.68"
-dhat = "0.3.2"
-eframe = {version = "0.22.0", features = ["persistence"]}
+eframe = {version = "0.22.0", features = ["persistence", "glow", "default_fonts"], default-features = false}
 egui = { version = "0.22.0", features = ["serde"] }
 egui_extras = { version = "0.22.0", features = ["svg"] }
 hashlink = { version = "0.8.1", features = ["serde", "serde_impl"] }
 image = "0.24.5"
-rayon = "1.7.0"
-rfd = "0.10.0"
+rfd = "0.11.4"
 rodio = "0.17.0"
 serde = "1.0.152"
 

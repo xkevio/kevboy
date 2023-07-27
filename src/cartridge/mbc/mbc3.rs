@@ -65,14 +65,16 @@ impl MBC3 {
 }
 
 impl MMIO for MBC3 {
+    #[inline(always)]
     fn read(&mut self, address: u16) -> u8 {
-        match address {
-            0x0000..=0x3FFF => self.rom[address as usize],
-            0x4000..=0x7FFF => {
-                let address = (self.rom_bank_number as u32) * 0x4000 + (address as u32 - 0x4000);
-                self.rom[address as usize]
+        match (address & 0xF000) >> 12 {
+            0x0..=0x3 => self.rom[address as usize],
+            0x4..=0x7 => {
+                let address =
+                    (self.rom_bank_number as usize) * 0x4000 + (address as usize - 0x4000);
+                self.rom[address]
             }
-            0xA000..=0xBFFF => {
+            0xA | 0xB => {
                 if self.ram_timer_enable {
                     if self.ram_bank_rtc <= 0x03 {
                         self.external_ram[(self.ram_bank_rtc & 0x03) as usize]
@@ -90,6 +92,7 @@ impl MMIO for MBC3 {
         }
     }
 
+    #[inline(always)]
     fn write(&mut self, address: u16, value: u8) {
         match address {
             0x0000..=0x1FFF => {

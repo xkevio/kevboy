@@ -226,16 +226,19 @@ impl Bus {
             self.timer.div,
         );
 
+        // If an HDMA is in progress, we prepare 10 bytes and read those into the HDMA buffer.
+        // To not tick during those reads, we set halted to false.
+        // The PPU state machine then uses these bytes during HBlank.
+        if self.ppu.cgb && self.hdma.hdma_in_progress {
+            self.hdma.halted = true;
+            for i in 0..0x10 {
+                self.hdma.bytes[i] = self.read(self.hdma.source() + i as u16);
+            }
+            self.hdma.halted = false;
+        }
+
         // PPU ticks 4 times per M-cycle
         for _ in 0..((cycles_passed * 4) / double_factor) {
-            if self.ppu.cgb {
-                self.hdma.halted = true;
-                for i in 0..0x10 {
-                    self.hdma.bytes[i] = self.read(self.hdma.source() + i as u16);
-                }
-                self.hdma.halted = false;
-            }
-
             self.ppu.tick(
                 &mut self.vram,
                 &self.oam,

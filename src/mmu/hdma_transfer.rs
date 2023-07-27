@@ -15,6 +15,8 @@ pub struct Hdma {
     pub halted: bool,
     pub hdma_in_progress: bool,
     pub bytes: [u8; 0x10],
+
+    pub transfer: bool,
 }
 
 impl Hdma {
@@ -22,6 +24,7 @@ impl Hdma {
         (self.hdma5 & 0x80) >> 7 == 0
     }
 
+    #[inline(always)]
     pub fn source(&self) -> u16 {
         u16::from_be_bytes([self.hdma1, self.hdma2])
     }
@@ -71,6 +74,7 @@ impl Default for Hdma {
             halted: false,
             hdma_in_progress: false,
             bytes: [0xFF; 0x10],
+            transfer: false,
         }
     }
 }

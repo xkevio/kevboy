@@ -38,17 +38,18 @@ use crate::ui::frame_history::FrameHistory;
 /// and keeps track of UI elements since we are using
 /// an immediate mode GUI.
 pub struct Kevboy {
-    emulator: Emulator,
+    pub emulator: Emulator,
     history: FrameHistory,
 
     texture: Option<TextureHandle>,
-    frame_buffer: Vec<Color32>,
+    pub frame_buffer: Vec<Color32>,
     raw_fb: Vec<Color32>,
 
     mem_viewer: MemoryViewer,
     control_panel: ControlPanel,
     palette_picker: PalettePicker,
     sound_settings: SoundSettings,
+    github_img: RetainedImage,
 
     recent_roms: LinkedHashSet<PathBuf>,
     is_vram_window_open: bool,
@@ -81,6 +82,11 @@ impl Kevboy {
             control_panel: ControlPanel::new(cc),
             palette_picker: PalettePicker::new(cc),
             sound_settings: SoundSettings::new(cc),
+            github_img: RetainedImage::from_svg_bytes(
+                "gh",
+                include_bytes!("../../icon/github-mark-white.svg"),
+            )
+            .unwrap(),
 
             recent_roms: eframe::get_value::<LinkedHashSet<_>>(cc.storage.unwrap(), "recent_roms")
                 .unwrap_or_default(),
@@ -113,6 +119,11 @@ impl Kevboy {
             control_panel: ControlPanel::new(cc),
             palette_picker: PalettePicker::new(cc),
             sound_settings: SoundSettings::new(cc),
+            github_img: RetainedImage::from_svg_bytes(
+                "gh",
+                include_bytes!("../../icon/github-mark-white.svg"),
+            )
+            .unwrap(),
 
             recent_roms: eframe::get_value::<LinkedHashSet<_>>(cc.storage.unwrap(), "recent_roms")
                 .unwrap_or_default(),
@@ -133,17 +144,16 @@ impl App for Kevboy {
     /// Called on shutdown and regular intervals, uses local filesystem or local storage (web)
     ///
     /// We save colors, controls and recently opened ROMs.
-    fn save(&mut self, _storage: &mut dyn Storage) {
-        eframe::set_value(_storage, "colors", &self.palette_picker.colors);
-        eframe::set_value(_storage, "dir_controls", &self.control_panel.direction_keys);
-        eframe::set_value(_storage, "action_controls", &self.control_panel.action_keys);
-        eframe::set_value(_storage, "recent_roms", &self.recent_roms);
-    }
+    // fn save(&mut self, _storage: &mut dyn Storage) {
+    //     eframe::set_value(_storage, "colors", &self.palette_picker.colors);
+    //     eframe::set_value(_storage, "dir_controls", &self.control_panel.direction_keys);
+    //     eframe::set_value(_storage, "action_controls", &self.control_panel.action_keys);
+    //     eframe::set_value(_storage, "recent_roms", &self.recent_roms);
+    // }
 
     /// UI declarations and functionality, called every frame and also runs the emulator
     fn update(&mut self, ctx: &Context, frame: &mut Frame) {
         self.history.update(ctx, frame);
-        frame.set_window_title(&format!("Kevboy ({:.2} fps)", self.history.fps()));
 
         if let Some(tex) = &mut self.texture {
             tex.set(
@@ -191,7 +201,7 @@ impl App for Kevboy {
                     // Opens File Dialog filtered for the most common extensions.
                     // Inserts path into `recent_roms` and saves it into local storage.
                     // Then, loads the rom into the emulator and inits the memory viewer.
-                    if ui.button("Open ROM").clicked() {
+                    if ui.button("📂 Open ROM").clicked() {
                         let file = rfd::FileDialog::new()
                             .add_filter("Game Boy ROM", &["gb", "bin", "gbc"])
                             .pick_file();
@@ -242,7 +252,7 @@ impl App for Kevboy {
                             !self.emulator.rom.is_empty(),
                             Button::new("Load Save").shortcut_text(
                                 ctx.format_shortcut(&KeyboardShortcut::new(
-                                    Modifiers::CTRL,
+                                    Modifiers::COMMAND,
                                     Key::L,
                                 )),
                             ),
@@ -266,7 +276,7 @@ impl App for Kevboy {
                     if ui
                         .add_enabled(
                             !self.emulator.rom.is_empty(),
-                            Button::new("Store Save").shortcut_text(
+                            Button::new("💾 Store Save").shortcut_text(
                                 ctx.format_shortcut(&KeyboardShortcut::new(
                                     Modifiers::CTRL,
                                     Key::S,
@@ -295,7 +305,7 @@ impl App for Kevboy {
                 // Options for changing controls and color palettes.
                 // Both may open a new window and will save to local storage.
                 ui.menu_button("Options", |ui| {
-                    ui.menu_button("Change palette", |ui| {
+                    ui.menu_button("🎨 Change palette", |ui| {
                         if ui.radio_value(&mut self.palette_picker.current_palette, Palette::Monochrome(Monochrome), "Monochrome").clicked() {
                             self.palette_picker.change_colors(&Monochrome::BLACK, &Monochrome::GRAY, &Monochrome::LIGHT_GRAY, &Monochrome::WHITE);
                         }
@@ -310,7 +320,7 @@ impl App for Kevboy {
                         }
                     });
 
-                    ui.menu_button("Scaling", |ui| {
+                    ui.menu_button("🔍 Scaling", |ui| {
                         let (force, scale) = &mut self.integer_scaling;
 
                         ui.checkbox(force, "Force integer scaling");
@@ -332,11 +342,11 @@ impl App for Kevboy {
 
                     ui.separator();
 
-                    if ui.button("Controls").clicked() {
+                    if ui.button("⌨ Controls").clicked() {
                         self.control_panel.open = !self.control_panel.open;
                     };
 
-                    if ui.button("Sound").clicked() {
+                    if ui.button("🔊 Sound").clicked() {
                         self.sound_settings.open = !self.sound_settings.open;
                     }
                 });
@@ -357,6 +367,10 @@ impl App for Kevboy {
         SidePanel::right("rp").resizable(false).show_animated(ctx, self.right, |ui| {
             ScrollArea::new([false, true]).show(ui, |ui| {
                 ui.vertical(|ui| {
+                    ui.add_space(10.0);
+                    ui.label(format!("FPS: {:.2}", self.history.fps()));
+                    ui.add_space(10.0);
+
                     // Registers
                     CollapsingHeader::new("Registers")
                         .default_open(true)
@@ -445,7 +459,7 @@ impl App for Kevboy {
                     ui.add_space(10.0);
 
                     CollapsingHeader::new("About").default_open(true).show(ui, |ui| {
-                        ui.label("This is a DMG-01 Game Boy emulator. \
+                        ui.label("This is a Color Game Boy emulator. \
                         It was made both as a learning exercise and because of the desire to create something emulation-related. \
                         It is not the most accurate emulator out there but it fares relatively well thanks to sub-instruction timing \
                         for example.");
@@ -456,7 +470,7 @@ impl App for Kevboy {
                         });
 
                         ui.horizontal(|ui| {
-                            ui.image(RetainedImage::from_svg_bytes("github", include_bytes!("../../icon/github-mark-white.svg")).unwrap().texture_id(ctx), Vec2::splat(20.0));
+                            ui.image(self.github_img.texture_id(ctx), Vec2::splat(20.0));
                             ui.hyperlink("https://github.com/xkevio/kevboy");
                         });
 
@@ -611,7 +625,7 @@ impl App for Kevboy {
         // ----------------------------------
 
         if !self.emulator.rom.is_empty() && !self.pause {
-            self.run(ctx);
+            self.run();
             ctx.request_repaint();
         }
     }
@@ -619,15 +633,15 @@ impl App for Kevboy {
 
 /// Second impl block for the run function
 impl Kevboy {
-    fn run(&mut self, ctx: &Context) {
+    pub fn run(&mut self) {
         let double_factor = if self.emulator.bus.double_speed { 2 } else { 1 };
         while self.emulator.cycle_count < 17_556 * double_factor {
-            self.emulator.bus.joypad.tick(
-                ctx,
-                &mut self.emulator.bus.interrupt_handler,
-                &self.control_panel.action_keys,
-                &self.control_panel.direction_keys,
-            );
+            // self.emulator.bus.joypad.tick(
+            //     ctx,
+            //     &mut self.emulator.bus.interrupt_handler,
+            //     &self.control_panel.action_keys,
+            //     &self.control_panel.direction_keys,
+            // );
 
             self.emulator.cycle_count += self.emulator.step() as u16;
         }
@@ -651,10 +665,10 @@ impl Kevboy {
             .ui_frame_buffer
             .iter()
             .map(|c| match *c {
-                ScreenColor::White(_) => self.palette_picker.colors["White"],
-                ScreenColor::LightGray(_) => self.palette_picker.colors["Light Gray"],
-                ScreenColor::Gray(_) => self.palette_picker.colors["Gray"],
-                ScreenColor::Black(_) => self.palette_picker.colors["Black"],
+                ScreenColor::White(_) => Green::WHITE,
+                ScreenColor::LightGray(_) => Green::LIGHT_GRAY,
+                ScreenColor::Gray(_) => Green::GRAY,
+                ScreenColor::Black(_) => Green::BLACK,
                 ScreenColor::FullColor(c, _) => c,
             })
             .collect::<Vec<_>>();
@@ -664,7 +678,7 @@ impl Kevboy {
         //     let new_frame = frame_buffer;
         //     self.frame_buffer = self.frame_blend(&old_frame, &new_frame);
         // } else {
-            self.frame_buffer = frame_buffer;
+        self.frame_buffer = frame_buffer;
         // }
 
         // Raw background tile map for debugging

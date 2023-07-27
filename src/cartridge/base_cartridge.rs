@@ -19,13 +19,15 @@ pub enum CartridgeType {
 pub struct Cartridge {
     pub cartridge_type: CartridgeType,
     pub title: String,
+    mbc: MBC3,
 }
 
 impl Cartridge {
-    pub fn new(cartridge_type: CartridgeType, title: &str) -> Self {
+    pub fn new(cartridge_type: CartridgeType, title: &str, mbc3: MBC3) -> Self {
         Self {
             cartridge_type,
             title: title.to_string(),
+            mbc: mbc3,
         }
     }
 
@@ -76,30 +78,35 @@ impl Default for Cartridge {
         Self {
             cartridge_type: CartridgeType::NoMBC(NoMBC::new(&[])),
             title: String::from(""),
+            mbc: MBC3::new(&[]),
         }
     }
 }
 
 // This could be optimized, currently: enum dispatch (still better than dynamic dispatch).
 impl MMIO for Cartridge {
+    #[inline(always)]
     fn read(&mut self, address: u16) -> u8 {
-        match &mut self.cartridge_type {
-            CartridgeType::NoMBC(nombc) => nombc.read(address),
-            CartridgeType::MBC1(mbc1) => mbc1.read(address),
-            CartridgeType::MBC2(mbc2) => mbc2.read(address),
-            CartridgeType::MBC3(mbc3) => mbc3.read(address),
-            CartridgeType::MBC5(mbc5) => mbc5.read(address),
-            _ => 0xFF,
-        }
+        self.mbc.read(address)
+        // match &mut self.cartridge_type {
+        //     CartridgeType::NoMBC(nombc) => nombc.read(address),
+        //     CartridgeType::MBC1(mbc1) => mbc1.read(address),
+        //     CartridgeType::MBC2(mbc2) => mbc2.read(address),
+        //     CartridgeType::MBC3(mbc3) => mbc3.read(address),
+        //     CartridgeType::MBC5(mbc5) => mbc5.read(address),
+        //     _ => 0xFF,
+        // }
     }
 
+    #[inline(always)]
     fn write(&mut self, address: u16, value: u8) {
-        match &mut self.cartridge_type {
-            CartridgeType::MBC1(mbc1) => mbc1.write(address, value),
-            CartridgeType::MBC2(mbc2) => mbc2.write(address, value),
-            CartridgeType::MBC3(mbc3) => mbc3.write(address, value),
-            CartridgeType::MBC5(mbc5) => mbc5.write(address, value),
-            _ => {}
-        }
+        self.mbc.write(address, value);
+        // match &mut self.cartridge_type {
+        //     CartridgeType::MBC1(mbc1) => mbc1.write(address, value),
+        //     CartridgeType::MBC2(mbc2) => mbc2.write(address, value),
+        //     CartridgeType::MBC3(mbc3) => mbc3.write(address, value),
+        //     CartridgeType::MBC5(mbc5) => mbc5.write(address, value),
+        //     _ => {}
+        // }
     }
 }
