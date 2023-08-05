@@ -428,7 +428,7 @@ impl PPU {
 
     fn update_bg_win_line(&mut self, vram: &[[u8; 0x2000]]) {
         if !self.cgb && !self.regs.is_bg_enabled() {
-            self.current_line = vec![(ScreenColor::White(0), BgOamPrio::BGPrio); 256];
+            self.current_line = vec![(ScreenColor::White(255), BgOamPrio::BGPrio); 256];
         }
 
         let unsigned_addressing = self.regs.lcdc & 0b10000 != 0;
@@ -484,7 +484,7 @@ impl PPU {
     fn update_sprite_line(&mut self, vram: &[[u8; 0x2000]]) {
         if self.regs.is_obj_enabled() {
             for sprite in self.current_sprites.iter().rev() {
-                let vbk = sprite.vbk() as usize;
+                let vbk = if self.cgb { sprite.vbk() as usize } else { 0 };
                 let upper_tile = sprite.tile_index & 0xFE;
                 let lower_tile = sprite.tile_index | 0x1;
 
@@ -572,7 +572,7 @@ impl PPU {
         y: u8,
     ) -> [(ScreenColor, BgOamPrio); 8] {
         let mut current_line: [(ScreenColor, BgOamPrio); 8] =
-            [(ScreenColor::White(0), BgOamPrio::BGPrio); 8];
+            [(ScreenColor::White(255), BgOamPrio::BGPrio); 8];
 
         let tile_attribute = TileAttribute::from(vram[1][index]);
 

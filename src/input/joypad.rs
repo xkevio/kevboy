@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use eframe::egui::{Context, Key};
-use gilrs::{ev::filter::Repeat, Button, Event, EventType, Filter, Gilrs};
+use gilrs::{ev::filter::Repeat, Axis, Button, Event, EventType, Filter, Gilrs};
 use hashlink::LinkedHashMap;
 
 use crate::{
@@ -37,6 +37,7 @@ impl MMIO for Joypad {
     }
 
     fn write(&mut self, _address: u16, value: u8) {
+        self.reset_pressed_keys();
         self.joyp = 0xC0 | value | (self.joyp & 0xF); // bit 7 and 6 unused and always 1
     }
 }
@@ -52,8 +53,6 @@ impl Joypad {
         direction_keys: &LinkedHashMap<String, (Key, Button)>,
         gilrs: &mut Gilrs,
     ) {
-        self.reset_pressed_keys();
-
         match self.get_button_type() {
             ButtonType::Action => self.handle_key_input(ctx, action_keys, gilrs),
             ButtonType::Direction => self.handle_key_input(ctx, direction_keys, gilrs),
@@ -92,8 +91,8 @@ impl Joypad {
         keys: &LinkedHashMap<String, (Key, Button)>,
         gilrs: &mut Gilrs,
     ) {
-        for (bit, (_, (key, button))) in keys.iter().enumerate() {
-            if ctx.input(|i| i.key_down(*key)) || self.is_gamepad_button_down(gilrs, button) {
+        for (bit, (name, (key, button))) in keys.iter().enumerate() {
+            if ctx.input(|i| i.key_down(*key)) || self.is_gamepad_button_down(gilrs, button, name) {
                 self.joyp &= !(0x1 << bit as u8);
             }
         }
@@ -102,8 +101,21 @@ impl Joypad {
     /// Checks if a controller button is pressed instead.
     ///
     /// Repeats the input as one input is too few for most games polling.
-    fn is_gamepad_button_down(&self, gilrs: &mut Gilrs, button: &Button) -> bool {
-        gilrs
+    fn is_gamepad_button_down(&self, gilrs: &mut Gilrs, button: &Button, name: &str) -> bool {
+        let left_stick = gilrs.gamepads().any(|(_, g)| {
+            if let (Some(axis_x), Some(axis_y)) =
+                (g.axis_data(Axis::LeftStickX), g.axis_data(Axis::LeftStickY))
+            {
+                axis_x.value() > 0.5 && name == "Right"
+                    || axis_x.value() < -0.5 && name == "Left"
+                    || axis_y.value() > 0.5 && name == "Up"
+                    || axis_y.value() < -0.5 && name == "Down"
+            } else {
+                false
+            }
+        });
+
+        left_stick || gilrs
             .next_event()
             .filter_ev(
                 &Repeat {

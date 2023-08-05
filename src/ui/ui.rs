@@ -165,7 +165,12 @@ impl App for Kevboy {
                 .cloned();
 
             if let Some(file) = first_rom {
-                let rom = fs::read(file.path.unwrap()).unwrap();
+                let rom = fs::read(file.path.as_ref().unwrap()).unwrap();
+
+                frame.set_window_title(&format!(
+                    "Kevboy - {:#?}",
+                    file.path.unwrap().file_name().unwrap().to_str().unwrap()
+                ));
                 self.emulator.load_rom(&rom);
                 self.mem_viewer = MemoryViewer::new_with_memory(&rom, true);
             }
@@ -189,7 +194,7 @@ impl App for Kevboy {
                         if let Some(path) = file {
                             let rom = fs::read(path.clone()).expect("ROM wasn't loaded correctly!");
                             // Limit recent roms list to 10 (gets too cluttered otherwise)
-                            if self.recent_roms.insert(path) && self.recent_roms.len() >= 10  {
+                            if self.recent_roms.insert(path.clone()) && self.recent_roms.len() >= 10  {
                                 self.recent_roms.pop_front();
                             }
 
@@ -198,6 +203,7 @@ impl App for Kevboy {
                                 storage.flush();
                             }
 
+                            frame.set_window_title(&format!("Kevboy - {:#?}", path.file_name().unwrap().to_str().unwrap()));
                             self.emulator.load_rom(&rom);
                             self.mem_viewer = MemoryViewer::new_with_memory(&rom, true);
                         }
@@ -214,6 +220,7 @@ impl App for Kevboy {
                                 let rom = fs::read(rom_path).expect("ROM wasn't loaded correctly!");
                                 self.recent_roms.to_back(rom_path);
 
+                                frame.set_window_title(&format!("Kevboy - {:#?}", rom_path.file_name().unwrap().to_str().unwrap()));
                                 self.emulator.load_rom(&rom);
                                 self.mem_viewer = MemoryViewer::new_with_memory(&rom, true);
 
