@@ -1,5 +1,5 @@
 #![allow(dead_code)]
-// #![windows_subsystem = "windows"]
+#![windows_subsystem = "windows"]
 
 use anyhow::Result;
 use eframe::IconData;
@@ -21,10 +21,6 @@ fn main() -> Result<()> {
     let icon_data = DynamicImage::from_decoder(PngDecoder::new(&icon[..])?)?;
 
     let native_options = eframe::NativeOptions {
-        // wgpu_options: WgpuConfiguration {
-        //     present_mode: PresentMode::AutoNoVsync,
-        //     ..Default::default()
-        // },
         vsync: false,
         centered: true,
         icon_data: Some(IconData {
