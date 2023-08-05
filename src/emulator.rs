@@ -50,7 +50,6 @@ impl Emulator {
             0x05 | 0x06 => CartridgeType::MBC2(MBC2::new(rom)),
             0x0F..=0x13 => CartridgeType::MBC3(MBC3::new(rom)),
             0x19..=0x1E => CartridgeType::MBC5(MBC5::new(rom, rom_size_kb, ram_size_kb)),
-            0x22 => CartridgeType::MBC7,
             _ => unimplemented!("Cartridge type not supported!"),
         };
 

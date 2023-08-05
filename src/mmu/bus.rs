@@ -47,15 +47,17 @@ impl MMIO for Bus {
             self.tick(1);
         }
 
-        match address {
-            0x0000..=0x7FFF => self.cartridge.read(address),
-            0x8000..=0x9FFF => {
+        // Only matching on the top 4 bits seems to give better codegen and a
+        // better jump table with less checks. (this function gets called a lot!)
+        match (address & 0xF000) >> 12 {
+            0x0..=0x7 => self.cartridge.read(address),
+            0x8 | 0x9 => {
                 let vbk = if self.ppu.cgb { self.vbk & 1 } else { 0 };
                 self.vram[vbk as usize][address as usize - 0x8000]
             },
-            0xA000..=0xBFFF => self.cartridge.read(address),
-            0xC000..=0xCFFF => self.wram[0][address as usize & 0x0FFF],
-            0xD000..=0xFDFF => {
+            0xA | 0xB => self.cartridge.read(address),
+            0xC => self.wram[0][address as usize & 0x0FFF],
+            0xD | 0xE => {
                 // Echo RAM.
                 if address > 0xDFFF && address < 0xF000 {
                     return self.wram[0][address as usize & 0x0FFF];
@@ -64,24 +66,35 @@ impl MMIO for Bus {
                 let wram_bank = if self.svbk & 0x07 == 0 { 1 } else { (self.svbk & 0x07) as usize };
                 self.wram[if self.ppu.cgb { wram_bank } else { 1 }][address as usize & 0x0FFF]
             }
-            0xFE00..=0xFE9F => self.oam[address as usize - 0xFE00],
-            0xFEA0..=0xFEFF => 0xFF, // usage of this area not prohibited, may trigger oam corruption
-            0xFF00..=0xFF7F => match address {
-                0xFF00 => self.joypad.read(address),
-                0xFF01 | 0xFF02 => self.serial.read(address),
-                0xFF04..=0xFF07 => self.timer.read(address),
-                0xFF0F => self.interrupt_handler.intf,
-                0xFF10..=0xFF3F => self.apu.read(address),
-                0xFF40..=0xFF4B | 0xFF68..=0xFF6B => self.ppu.read(address),
-                0xFF4D => self.key1,
-                0xFF4F => self.vbk,
-                0xFF50 => self.disable_boot_rom,
-                0xFF51..=0xFF55 => self.hdma.read(address),
-                0xFF70 => self.svbk,
-                _ => 0xFF,
-            },
-            0xFF80..=0xFFFE => self.hram[address as usize - 0xFF80],
-            0xFFFF => self.interrupt_handler.inte,
+            0xF => {
+                if address < 0xFE00 {
+                    let wram_bank = if self.svbk & 0x07 == 0 { 1 } else { (self.svbk & 0x07) as usize };
+                    return self.wram[if self.ppu.cgb { wram_bank } else { 1 }][address as usize & 0x0FFF];
+                }
+
+                match address & 0x0FFF {
+                    0xE00..=0xE9F => self.oam[address as usize - 0xFE00],
+                    0xEA0..=0xEFF => 0xFF, // usage of this area not prohibited, may trigger oam corruption
+                    0xF00..=0xF7F => match address {
+                        0xFF00 => self.joypad.read(address),
+                        0xFF01 | 0xFF02 => self.serial.read(address),
+                        0xFF04..=0xFF07 => self.timer.read(address),
+                        0xFF0F => self.interrupt_handler.intf,
+                        0xFF10..=0xFF3F => self.apu.read(address),
+                        0xFF40..=0xFF4B | 0xFF68..=0xFF6B => self.ppu.read(address),
+                        0xFF4D => self.key1,
+                        0xFF4F => self.vbk,
+                        0xFF50 => self.disable_boot_rom,
+                        0xFF51..=0xFF55 => self.hdma.read(address),
+                        0xFF70 => self.svbk,
+                        _ => 0xFF,
+                    },
+                    0xF80..=0xFFE => self.hram[address as usize - 0xFF80],
+                    0xFFF => self.interrupt_handler.inte,
+                    _ => unreachable!()
+                }
+            }
+            _ => unreachable!()
         }
     }
 
@@ -200,16 +213,19 @@ impl Bus {
             self.timer.div,
         );
 
+        // If an HDMA is in progress, we prepare 10 bytes and read those into the HDMA buffer.
+        // To not tick during those reads, we set halted to false.
+        // The PPU state machine then uses these bytes during HBlank.
+        if self.ppu.cgb && self.hdma.hdma_in_progress {
+            self.hdma.halted = true;
+            for i in 0..0x10 {
+                self.hdma.bytes[i] = self.read(self.hdma.source() + i as u16);
+            }
+            self.hdma.halted = false;
+        }
+
         // PPU ticks 4 times per M-cycle
         for _ in 0..((cycles_passed * 4) / double_factor) {
-            if self.ppu.cgb {
-                self.hdma.halted = true;
-                for i in 0..0x10 {
-                    self.hdma.bytes[i] = self.read(self.hdma.source() + i as u16);
-                }
-                self.hdma.halted = false;
-            }
-
             self.ppu.tick(
                 &mut self.vram,
                 &self.oam,

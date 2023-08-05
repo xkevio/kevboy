@@ -3,6 +3,7 @@ use eframe::{
     CreationContext,
 };
 use egui::{Button, Frame};
+use gilrs::{Button as CButton, Gilrs};
 use hashlink::LinkedHashMap;
 
 pub struct ControlPanel {
@@ -10,8 +11,10 @@ pub struct ControlPanel {
 
     // LinkedHashMap keeps insertion order, which we want
     // since we generate UI elements from this map.
-    pub direction_keys: LinkedHashMap<String, Key>,
-    pub action_keys: LinkedHashMap<String, Key>,
+    pub direction_keys: LinkedHashMap<String, (Key, CButton)>,
+    pub action_keys: LinkedHashMap<String, (Key, CButton)>,
+
+    pub gilrs: Gilrs,
 
     button_width: f32,
 }
@@ -21,17 +24,18 @@ impl Default for ControlPanel {
         Self {
             open: Default::default(),
             direction_keys: LinkedHashMap::from_iter([
-                ("Right".into(), Key::D),
-                ("Left".into(), Key::A),
-                ("Up".into(), Key::W),
-                ("Down".into(), Key::S),
+                ("Right".into(), (Key::D, CButton::DPadRight)),
+                ("Left".into(), (Key::A, CButton::DPadLeft)),
+                ("Up".into(), (Key::W, CButton::DPadUp)),
+                ("Down".into(), (Key::S, CButton::DPadDown)),
             ]),
             action_keys: LinkedHashMap::from_iter([
-                ("A".into(), Key::P),
-                ("B".into(), Key::O),
-                ("Select".into(), Key::Q),
-                ("Start".into(), Key::Enter),
+                ("A".into(), (Key::P, CButton::South)),
+                ("B".into(), (Key::O, CButton::East)),
+                ("Select".into(), (Key::Q, CButton::Select)),
+                ("Start".into(), (Key::Enter, CButton::Start)),
             ]),
+            gilrs: Gilrs::new().unwrap(),
             button_width: 0.0,
         }
     }
@@ -41,13 +45,17 @@ impl ControlPanel {
     pub fn new(cc: &CreationContext) -> Self {
         if let Some(storage) = cc.storage {
             if let (Some(dir_controls), Some(action_controls)) = (
-                eframe::get_value::<LinkedHashMap<String, Key>>(storage, "dir_controls"),
-                eframe::get_value::<LinkedHashMap<String, Key>>(storage, "action_controls"),
+                eframe::get_value::<LinkedHashMap<String, (Key, CButton)>>(storage, "dir_controls"),
+                eframe::get_value::<LinkedHashMap<String, (Key, CButton)>>(
+                    storage,
+                    "action_controls",
+                ),
             ) {
                 Self {
                     open: Default::default(),
                     direction_keys: dir_controls,
                     action_keys: action_controls,
+                    gilrs: Gilrs::new().unwrap(),
                     button_width: 0.0,
                 }
             } else {
@@ -66,7 +74,7 @@ impl ControlPanel {
                 ui.vertical(|ui| {
                     ui.heading("Direction");
                     Grid::new("direction").num_columns(2).show(ui, |ui| {
-                        for (name, key) in &mut self.direction_keys {
+                        for (name, (key, _)) in &mut self.direction_keys {
                             ui.label(format!("{name}: "));
                             let response = ui.add(
                                 TextEdit::singleline(&mut (*key).name().to_string())
@@ -94,7 +102,7 @@ impl ControlPanel {
                 ui.vertical(|ui| {
                     ui.heading("Action");
                     Grid::new("action").num_columns(2).show(ui, |ui| {
-                        for (name, key) in &mut self.action_keys {
+                        for (name, (key, _)) in &mut self.action_keys {
                             ui.label(format!("{name}: "));
                             let response = ui.add(
                                 TextEdit::singleline(&mut (*key).name().to_string())

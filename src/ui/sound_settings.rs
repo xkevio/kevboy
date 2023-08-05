@@ -1,14 +1,11 @@
 use eframe::CreationContext;
 use egui::{RichText, Slider, Ui};
 
+use crate::apu::apu::APU;
+
 pub struct SoundSettings {
     pub open: bool,
     pub volume: f32,
-
-    pub ch1: bool,
-    pub ch2: bool,
-    pub ch3: bool,
-    pub ch4: bool,
 }
 
 impl SoundSettings {
@@ -26,14 +23,10 @@ impl SoundSettings {
         Self {
             open: false,
             volume,
-            ch1: true,
-            ch2: true,
-            ch3: true,
-            ch4: true,
         }
     }
 
-    pub fn show(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
+    pub fn show(&mut self, ui: &mut Ui, frame: &mut eframe::Frame, apu: &mut APU) {
         ui.vertical_centered(|ui| {
             ui.heading("Change sound settings");
             ui.add_space(5.0);
@@ -49,19 +42,18 @@ impl SoundSettings {
             ui.separator();
 
             ui.label(RichText::new("Enable separate channels:").size(15.0));
-            ui.label(RichText::new("(not yet implemented!)").italics());
             ui.add_space(5.0);
 
             ui.horizontal(|ui| {
                 ui.add_space(ui.available_width() / 4.0);
-                ui.checkbox(&mut self.ch1, "Channel 1");
-                ui.checkbox(&mut self.ch2, "Channel 2");
+                ui.checkbox(&mut apu.ch_enable.0, "Channel 1");
+                ui.checkbox(&mut apu.ch_enable.1, "Channel 2");
                 ui.add_space(ui.available_width() / 4.0);
             });
             ui.horizontal(|ui| {
                 ui.add_space(ui.available_width() / 4.0);
-                ui.checkbox(&mut self.ch3, "Channel 3");
-                ui.checkbox(&mut self.ch4, "Channel 4");
+                ui.checkbox(&mut apu.ch_enable.2, "Channel 3");
+                ui.checkbox(&mut apu.ch_enable.3, "Channel 4");
                 ui.add_space(ui.available_width() / 4.0);
             });
 

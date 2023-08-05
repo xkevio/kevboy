@@ -2,6 +2,7 @@
 /blargg_tests
 *.bin
 *.gb
+*.gbc
 *.txt
 /.idea
 /mooneye_tests

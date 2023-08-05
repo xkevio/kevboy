@@ -22,6 +22,7 @@ impl MBC2 {
 }
 
 impl MMIO for MBC2 {
+    #[inline(always)]
     fn read(&mut self, address: u16) -> u8 {
         match address {
             0x0000..=0x3FFF => self.rom[address as usize],
@@ -48,6 +49,7 @@ impl MMIO for MBC2 {
         }
     }
 
+    #[inline(always)]
     fn write(&mut self, address: u16, value: u8) {
         match address {
             0x0000..=0x3FFF => {

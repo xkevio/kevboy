@@ -52,14 +52,14 @@ For a full list, see: https://docs.rs/egui/latest/egui/enum.Key.html
 
 |   **Keyboard**   | **Game Boy** |
 |:----------------:|:------------:|
-| <kbd>O</kbd>     | `B`          |
-| <kbd>P</kbd>     | `A`          |
-| <kbd>W</kbd>     | `Up`         |
-| <kbd>A</kbd>     | `Left`       |
-| <kbd>S</kbd>     | `Down`       |
-| <kbd>D</kbd>     | `Right`      |
-| <kbd>Enter</kbd> | `Start`      |
-| <kbd>Q</kbd>     | `Shift`      |
+|   <kbd>O</kbd>   |     `B`      |
+|   <kbd>P</kbd>   |     `A`      |
+|   <kbd>W</kbd>   |     `Up`     |
+|   <kbd>A</kbd>   |    `Left`    |
+|   <kbd>S</kbd>   |    `Down`    |
+|   <kbd>D</kbd>   |   `Right`    |
+| <kbd>Enter</kbd> |   `Start`    |
+|   <kbd>Q</kbd>   |   `Shift`    |
 
 ## Passed tests:
 
@@ -67,37 +67,38 @@ For a full list, see: https://docs.rs/egui/latest/egui/enum.Key.html
 
 | Test              | Status |
 |-------------------|--------|
-| `cpu_instrs.gb`   | ✅     |
-| `mem-timing.gb`   | ✅     |
-| `instr_timing.gb` | ✅     |
+| `cpu_instrs.gb`   | ✅      |
+| `mem-timing.gb`   | ✅      |
+| `instr_timing.gb` | ✅      |
 
 ### PPU tests:
 
-| Test              | Status |
-|-------------------|--------|
-| `dmg-acid2.gb`, `cgb-acid2.gb`   | ✅     |
-| `sprite_priority.gb`   | ✅     |
+| Test                           | Status |
+|--------------------------------|--------|
+| `dmg-acid2.gb`, `cgb-acid2.gb` | ✅      |
+| `sprite_priority.gb`           | ✅      |
 
 #### Timer tests:
 
-| Test                   | Status |
-|------------------------|--------|
-| `div_write.gb`         | ✅      |
-| `tim00.gb`             | ✅      |
-| `tim00_div_trigger.gb` | ✅      |
-| `tim01.gb`             | ✅       |
-| `tim01_div_trigger.gb` | ✅       |
-| `tim10.gb`             | ✅       |
-| `tim10_div_trigger.gb` | ✅       |
-| `tim11.gb`             | ✅       |
-| `tim11_div_trigger.gb` | ✅       |
-| `tima_reload.gb`       | ✅       |
-| `tima_write_reloading.gb`       | ✅       |
-| `tma_write_reloading.gb`       | ✅       |
+| Test                      | Status |
+|---------------------------|---------|
+| `div_write.gb`            | ✅      |
+| `tim00.gb`                | ✅      |
+| `tim00_div_trigger.gb`    | ✅      |
+| `tim01.gb`                | ✅      |
+| `tim01_div_trigger.gb`    | ✅      |
+| `tim10.gb`                | ✅      |
+| `tim10_div_trigger.gb`    | ✅      |
+| `tim11.gb`                | ✅      |
+| `tim11_div_trigger.gb`    | ✅      |
+| `tima_reload.gb`          | ✅      |
+| `tima_write_reloading.gb` | ✅      |
+| `tma_write_reloading.gb`  | ✅      |
 
 ## TODO
 
-- [ ] Implement fast-forward feature
+- [x] Implement fast-forward feature
+- [x] Gamepad support
+- [x] Implement enabling and disabling individual sound channels
+- [ ] More automatic saving (`mmap`)
 - [ ] Implement the Real Time Clock (RTC) in MBC3
-- [ ] Implement enabling and disabling individual sound channels
-- [ ] More automatic saving
