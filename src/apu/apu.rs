@@ -1,7 +1,5 @@
 use crate::mmu::mmio::MMIO;
-use rodio::{
-    buffer::SamplesBuffer, queue::SourcesQueueOutput, OutputStream, OutputStreamHandle, Sink,
-};
+use rodio::{buffer::SamplesBuffer, OutputStream, OutputStreamHandle, Sink};
 
 // WAVE DUTY CYCLES
 const WAVE_DUTY_CYCLES: [[u8; 8]; 4] = [
@@ -564,7 +562,7 @@ pub struct APU {
     /// Wave RAM holds 16 bytes of custom 4 bit samples for channel 3
     pub wave_ram: [u8; 0x10],
     /// Track T-cycles to play sound at correct time depending on sample rate
-    internal_cycles: u8,
+    internal_cycles: u16,
 
     /// Internal counter which increases based on falling edge of DIV
     div_apu: u8,
@@ -583,17 +581,26 @@ pub struct APU {
     /// Global settings: On/Off switch
     nr52: u8,
 
+    /// Buffer that holds the sound samples before being queued into the audio queue
+    buffer: Vec<f32>,
+
     /// Queue to append samples to, never stops playing
-    pub sink: (Sink, SourcesQueueOutput<f32>),
+    pub sink: Sink,
     /// Rodio frontend streams to play sound
     streams: (OutputStream, OutputStreamHandle),
-    init: bool,
+    /// Fast-forward the APU
+    pub speed: bool,
+    /// Frontend communication for enabling/disabling individual channels
+    pub ch_enable: (bool, bool, bool, bool),
 
     capacitor: f32,
 }
 
 impl Default for APU {
     fn default() -> Self {
+        let streams = OutputStream::try_default().unwrap();
+        let sink = Sink::try_new(&streams.1).unwrap();
+
         Self {
             wave_ram: [0xFF; 0x10],
             internal_cycles: 0,
@@ -610,9 +617,12 @@ impl Default for APU {
             nr51: 0xF3,
             nr52: 0xF1,
 
-            sink: Sink::new_idle(),
-            streams: OutputStream::try_default().unwrap(),
-            init: false,
+            buffer: Vec::with_capacity(1024),
+
+            sink,
+            streams,
+            speed: false,
+            ch_enable: (true, true, true, true),
 
             capacitor: 0.0,
         }
@@ -785,14 +795,14 @@ impl APU {
             self.ch4.tick(self.div_apu, &mut self.nr52);
         }
 
-        // TODO: magic number (cpu freq / 44.1kHz)
-        while self.internal_cycles >= 95 {
-            self.internal_cycles -= 95;
+        // Magic number (cpu_freq / 44.1kHz or 48kHz) where cpu_freq ~ 4MHz
+        while self.internal_cycles < 87 * (4 * self.speed as u16 + 1) {
+            self.internal_cycles -= 87 * (4 * self.speed as u16 + 1);
 
-            let ch1_sample = if self.is_ch1_enabled() { self.ch1.sample() } else { 0.0 };
-            let ch2_sample = if self.is_ch2_enabled() { self.ch2.sample() } else { 0.0 };
-            let ch3_sample = if self.is_ch3_enabled() { self.ch3.sample(&self.wave_ram) } else { 0.0 };
-            let ch4_sample = if self.is_ch4_enabled() { self.ch4.sample() } else { 0.0 };
+            let ch1_sample = if self.is_ch1_enabled() && self.ch_enable.0 { self.ch1.sample() } else { 0.0 };
+            let ch2_sample = if self.is_ch2_enabled() && self.ch_enable.1 { self.ch2.sample() } else { 0.0 };
+            let ch3_sample = if self.is_ch3_enabled() && self.ch_enable.2 { self.ch3.sample(&self.wave_ram) } else { 0.0 };
+            let ch4_sample = if self.is_ch4_enabled() && self.ch_enable.3 { self.ch4.sample() } else { 0.0 };
 
             // Sound panning via NR51
             let left_output = (self.nr51 & 0xF0) >> 4;
@@ -830,13 +840,15 @@ impl APU {
             let ls = self.high_pass(left_sample);
             let rs = self.high_pass(right_sample);
 
-            self.sink.0.append(SamplesBuffer::new(2, 44100, [ls, rs]));
-        }
+            self.buffer.extend([ls, rs]);
+            // self.sink.append(SamplesBuffer::new(2, 48000, [ls, rs]))
 
-        // TODO: init Sink directly with OutputStreamHandle
-        if !self.init {
-            self.sink.0 = Sink::try_new(&self.streams.1).unwrap();
-            self.init = true;
+            // len() of sink does not return amount of samples but amount of SamplesBuffer, hence 1 SamplesBuffer = 1024 sample
+            if self.buffer.len() >= 1024 {
+                // while self.sink.len() > 2 {} <-- syncs to 60 fps on native
+                self.sink.append(SamplesBuffer::new(2, 48000, self.buffer.clone()));
+                self.buffer.clear();
+            }
         }
 
         self.internal_cycles += 1;

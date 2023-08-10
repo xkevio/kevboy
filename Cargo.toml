@@ -1,6 +1,6 @@
 [package]
 name = "kevboy"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 
 # [profile.release]
@@ -8,26 +8,24 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.68"
-eframe = {version = "0.21.3", features = ["persistence"]}
-egui = { version = "0.21.0", features = ["serde"] }
-egui_extras = { version = "0.21.0", features = ["svg"] }
+eframe = {version = "0.22.0", features = ["persistence"] }
+egui = { version = "0.22.0", features = ["serde"] }
+egui-phosphor = "0.2.0"
+egui_extras = { version = "0.22.0", features = ["svg"] }
+gilrs = { version = "0.10.2", features = ["serde-serialize"] }
 hashlink = { version = "0.8.1", features = ["serde", "serde_impl"] }
 image = "0.24.5"
-rayon = "1.7.0"
-rfd = "0.10.0"
-rodio = { version = "0.17.0", features = ["wasm-bindgen"] }
+rfd = "0.11.4"
+rodio = { version = "0.17.0", default-features = false, features = ["wasm-bindgen"] }
 serde = "1.0.152"
-
-[dev-dependencies]
-log = "0.4.17"
-simple_logger = "2.3.0"
 
 # web:
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1.6"
 tracing-wasm = "0.2"
-wasm-bindgen = "0.2.84"
+wasm-bindgen = "0.2.87"
 wasm-bindgen-futures = "0.4.33"
-web-sys = { version = "0.3.60", features = ["console", "Url", "Blob", "BlobPropertyBag", "FilePropertyBag"] }
+web-sys = { version = "0.3.64", features = ["console", "Url", "Blob", "BlobPropertyBag", "FilePropertyBag"] }
 wasm-timer = "0.2.5"
 js-sys = "0.3.60"
+log = "0.4"

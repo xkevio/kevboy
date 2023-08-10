@@ -13,7 +13,6 @@ pub enum CartridgeType {
     MBC2(MBC2),
     MBC3(MBC3),
     MBC5(MBC5),
-    MBC7,
 }
 
 pub struct Cartridge {
@@ -81,6 +80,7 @@ impl Default for Cartridge {
 }
 
 impl MMIO for Cartridge {
+    #[inline(always)]
     fn read(&mut self, address: u16) -> u8 {
         match &mut self.cartridge_type {
             CartridgeType::NoMBC(nombc) => nombc.read(address),
@@ -88,10 +88,10 @@ impl MMIO for Cartridge {
             CartridgeType::MBC2(mbc2) => mbc2.read(address),
             CartridgeType::MBC3(mbc3) => mbc3.read(address),
             CartridgeType::MBC5(mbc5) => mbc5.read(address),
-            _ => 0xFF,
         }
     }
 
+    #[inline(always)]
     fn write(&mut self, address: u16, value: u8) {
         match &mut self.cartridge_type {
             CartridgeType::MBC1(mbc1) => mbc1.write(address, value),

@@ -52,7 +52,7 @@ pub struct PPU {
     obpi: u8,
 
     /// Contains pixels for the current line
-    current_line: Vec<ScreenColor>,
+    current_line: Vec<(ScreenColor, BgOamPrio)>,
     /// Contains up to 10 sprites that will be rendered this line
     current_sprites: Vec<Sprite>,
 
@@ -216,8 +216,8 @@ impl PPU {
             obj_cram: [0xFF; 64],
             obpi: 0xD0,
 
-            current_line: Vec::new(),
-            current_sprites: Vec::new(),
+            current_line: Vec::with_capacity(256),
+            current_sprites: Vec::with_capacity(10),
 
             regs: PPURegisters::default(),
             dots: 0,
@@ -265,7 +265,7 @@ impl PPU {
                     if self.dots >= HBLANK_START {
                         // Important: draw later during Mode3 to fix parts of pocket.gb
                         if self.current_line.is_empty() {
-                            self.current_line = self.get_current_line(vram);
+                            self.update_current_line(vram);
                         }
 
                         if self.regs.is_window_visible()
@@ -345,7 +345,6 @@ impl PPU {
                             }
 
                             self.change_mode(Mode::Mode2, interrupt_handler);
-                            self.dump_bg_map(vram);
                         }
 
                         self.dots = -1;
@@ -395,7 +394,7 @@ impl PPU {
     // -------- DEBUGGING STUFF --------
 
     /// Dumps 256x256 BG map for the vram viewer
-    fn dump_bg_map(&mut self, vram: &[[u8; 0x2000]]) {
+    pub fn dump_bg_map(&mut self, vram: &[[u8; 0x2000]]) {
         let mut current_line: Vec<(ScreenColor, BgOamPrio)> = Vec::with_capacity(256);
 
         for i in 0..=255 {
@@ -415,24 +414,21 @@ impl PPU {
             for x in 0..256 {
                 self.raw_frame[i as usize * 256 + x] = current_line[x].0;
             }
+
             current_line.clear();
         }
     }
 
     // -------- ACTUAL RENDERING --------
 
-    fn get_current_line(&self, vram: &[[u8; 0x2000]]) -> Vec<ScreenColor> {
-        let bg_win_line = self.get_bg_win_line(vram);
-        let sprite_line = self.get_sprite_line(vram, &bg_win_line);
-
-        sprite_line
+    fn update_current_line(&mut self, vram: &[[u8; 0x2000]]) {
+        self.update_bg_win_line(vram);
+        self.update_sprite_line(vram);
     }
 
-    fn get_bg_win_line(&self, vram: &[[u8; 0x2000]]) -> Vec<(ScreenColor, BgOamPrio)> {
-        let mut current_line: Vec<(ScreenColor, BgOamPrio)> = Vec::with_capacity(256);
-
+    fn update_bg_win_line(&mut self, vram: &[[u8; 0x2000]]) {
         if !self.cgb && !self.regs.is_bg_enabled() {
-            return vec![(ScreenColor::White(0), BgOamPrio::BGPrio); 256];
+            self.current_line = vec![(ScreenColor::White(255), BgOamPrio::BGPrio); 256];
         }
 
         let unsigned_addressing = self.regs.lcdc & 0b10000 != 0;
@@ -447,11 +443,11 @@ impl PPU {
 
         for index in tile_map_start..=(tile_map_start + 0x1F) {
             let tile_row = self.get_tile_row(vram, unsigned_addressing, index, adjusted_y);
-            current_line.extend(tile_row);
+            self.current_line.extend(tile_row);
         }
 
         // Apply SCX to the current scanline in the background layer
-        current_line.rotate_left(self.regs.scx as usize);
+        self.current_line.rotate_left(self.regs.scx as usize);
 
         // Draw window over bg if enabled and visible
         if self.regs.is_window_enabled()
@@ -474,29 +470,21 @@ impl PPU {
                     let signed_wx = self.regs.wx as i16;
                     let win_index = (signed_wx - 7) + i as i16 + (j as i16 * 8);
                     if (0..256).contains(&win_index) {
-                        current_line[win_index as usize] = tile_row[i];
+                        self.current_line[win_index as usize] = tile_row[i];
                     }
                 }
             }
         }
-
-        current_line
     }
 
     // -------------------------
     // Sprites
     // -------------------------
 
-    fn get_sprite_line(
-        &self,
-        vram: &[[u8; 0x2000]],
-        current_line: &[(ScreenColor, BgOamPrio)],
-    ) -> Vec<ScreenColor> {
-        let mut current_line: Vec<(ScreenColor, BgOamPrio)> = Vec::from(current_line);
-
+    fn update_sprite_line(&mut self, vram: &[[u8; 0x2000]]) {
         if self.regs.is_obj_enabled() {
             for sprite in self.current_sprites.iter().rev() {
-                let vbk = sprite.vbk() as usize;
+                let vbk = if self.cgb { sprite.vbk() as usize } else { 0 };
                 let upper_tile = sprite.tile_index & 0xFE;
                 let lower_tile = sprite.tile_index | 0x1;
 
@@ -560,19 +548,17 @@ impl PPU {
                     if (msb << 1 | lsb) != 0 {
                         let color = self.resolve_bg_to_obj_prio(
                             sprite,
-                            current_line[x].0,
+                            self.current_line[x].0,
                             msb << 1 | lsb,
                             palette,
-                            current_line[x].1,
+                            self.current_line[x].1,
                         );
 
-                        current_line[x].0 = color;
+                        self.current_line[x].0 = color;
                     }
                 }
             }
         }
-
-        current_line.iter().map(|(a, _)| *a).collect()
     }
 
     /// Gets the 8 pixels of the current bg/win tile
@@ -586,7 +572,7 @@ impl PPU {
         y: u8,
     ) -> [(ScreenColor, BgOamPrio); 8] {
         let mut current_line: [(ScreenColor, BgOamPrio); 8] =
-            [(ScreenColor::White(0), BgOamPrio::BGPrio); 8];
+            [(ScreenColor::White(255), BgOamPrio::BGPrio); 8];
 
         let tile_attribute = TileAttribute::from(vram[1][index]);
 
@@ -688,7 +674,7 @@ impl PPU {
         let y = self.regs.ly as usize;
 
         for i in 0..LCD_WIDTH {
-            self.frame_buffer[y * LCD_WIDTH + i] = self.current_line[i];
+            self.frame_buffer[y * LCD_WIDTH + i] = self.current_line[i].0;
         }
 
         self.current_line.clear();

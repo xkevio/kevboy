@@ -22,6 +22,7 @@ impl Hdma {
         (self.hdma5 & 0x80) >> 7 == 0
     }
 
+    #[inline(always)]
     pub fn source(&self) -> u16 {
         u16::from_be_bytes([self.hdma1, self.hdma2])
     }
