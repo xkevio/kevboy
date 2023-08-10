@@ -80,7 +80,7 @@ jobs:
           strip target/x86_64-apple-darwin/release/kevboy
           cargo build --target=aarch64-apple-darwin --workspace --release
           strip target/aarch64-apple-darwin/release/kevboy
-          lipo kevboy target/x86_64-apple-darwin/release/kevboy target/aarch64-apple-darwin/release/kevboy -create -output kevboy
+          lipo target/x86_64-apple-darwin/release/kevboy target/aarch64-apple-darwin/release/kevboy -create -output kevboy
           mv target/x86_64-apple-darwin/release/kevboy target/release/kevboy_mac_x86
           mv kevboy kevboy_mac_universal
 
