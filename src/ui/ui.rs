@@ -257,10 +257,11 @@ impl App for Kevboy {
                     // Iterates through a copy of `recent_roms` and generates menu buttons from it
                     // so that all the most recently loaded roms are there. Only displays the file name, not the full path.
                     // Loads the emulator and memory viewer upon clicking a rom.
-                    ui.menu_button(icon_text!(FILES, "Open recent ROMs"), |ui| {
-                        #[cfg(target_arch = "wasm32")]
-                        ui.label("The recent ROM list is not supported on the web version unfortunately.");
-                    });
+                    if ui.button(icon_text!(FILES, "Open Demo ROM")).clicked() {
+                        let fairy_lake = include_bytes!("../../assets/fairylake.gb");
+                        self.emulator.load_rom(fairy_lake);
+                        self.mem_viewer = MemoryViewer::new_with_memory(fairy_lake, true);
+                    }
 
                     ui.separator();
 
