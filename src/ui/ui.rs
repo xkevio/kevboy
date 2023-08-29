@@ -660,6 +660,9 @@ impl Kevboy {
                 &mut self.control_panel.gilrs,
             );
 
+            for _ in 0..(4 * self.fast_forward as u8) {
+                self.emulator.step();
+            }
             self.emulator.cycle_count += self.emulator.step() as u16;
         }
 
