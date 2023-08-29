@@ -22,7 +22,7 @@ use crate::{
     emulator::Emulator,
     ppu::{
         color_palette::{Chocolate, Green, Monochrome, ScreenColor, COLOR_CORRECTION},
-        LCD_HEIGHT, LCD_WIDTH, Mode,
+        LCD_HEIGHT, LCD_WIDTH,
     },
 };
 
@@ -651,21 +651,21 @@ impl App for Kevboy {
 impl Kevboy {
     fn run(&mut self, ctx: &Context) {
         let double_factor = if self.emulator.bus.double_speed { 2 } else { 1 };
+
+        // Poll keyboard and gamepad input once per frame.
+        self.emulator.bus.joypad.tick(
+            ctx,
+            &mut self.emulator.bus.interrupt_handler,
+            &self.control_panel.action_keys,
+            &self.control_panel.direction_keys,
+            &mut self.control_panel.gilrs,
+        );
+
         while self.emulator.cycle_count < 17_556 * double_factor {
-            // Only check for joypad during VBlank.
-            if self.emulator.bus.ppu.current_mode == Mode::VBlank {                
-                self.emulator.bus.joypad.tick(
-                    ctx,
-                    &mut self.emulator.bus.interrupt_handler,
-                    &self.control_panel.action_keys,
-                    &self.control_panel.direction_keys,
-                    &mut self.control_panel.gilrs,
-                );
-            }
-            
             for _ in 0..(4 * self.fast_forward as u8) {
                 self.emulator.step();
             }
+
             self.emulator.cycle_count += self.emulator.step() as u16;
         }
 
