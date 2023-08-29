@@ -11,8 +11,15 @@ use crate::{
 
 #[derive(Debug, Clone, Copy)]
 pub struct Joypad {
+    /// The raw register value depending on the selected button type.
     joyp: u8,
+    /// Temporary storage for IRQ check.
     prev_joyp: u8,
+
+    /// Cached direction state.
+    dir_state: u8,
+    /// Cached action state.
+    action_state: u8,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -27,24 +34,32 @@ impl Default for Joypad {
         Self {
             joyp: 0xCF,
             prev_joyp: 0xCF,
+
+            dir_state: 0xF,
+            action_state: 0xF,
         }
     }
 }
 
 impl MMIO for Joypad {
     fn read(&mut self, _address: u16) -> u8 {
+        self.joyp = match self.get_button_type() {
+            ButtonType::Action => 0xC0 | (self.joyp & 0x30) | self.action_state,
+            ButtonType::Direction => 0xC0 | (self.joyp & 0x30) | self.dir_state,
+            _ => 0xCF
+        };
+
         self.joyp
     }
 
     fn write(&mut self, _address: u16, value: u8) {
-        self.reset_pressed_keys();
-        self.joyp = 0xC0 | value | (self.joyp & 0xF); // bit 7 and 6 unused and always 1
+        self.joyp = 0xC0 | (value & 0x30) | (self.joyp & 0xF); // bit 7 and 6 unused and always 1
     }
 }
 
 impl Joypad {
-    /// Handles input depending on the selected `ButtonType` (bits of the JOYP register)
-    /// and looks out for possible Joypad IRQs.
+    /// Handles input once per frame and caches the state
+    /// for both direction and action buttons.
     pub fn tick(
         &mut self,
         ctx: &Context,
@@ -53,11 +68,8 @@ impl Joypad {
         direction_keys: &LinkedHashMap<String, (Key, Button)>,
         gilrs: &mut Gilrs,
     ) {
-        match self.get_button_type() {
-            ButtonType::Action => self.handle_key_input(ctx, action_keys, gilrs),
-            ButtonType::Direction => self.handle_key_input(ctx, direction_keys, gilrs),
-            _ => {}
-        }
+        self.action_state = self.handle_key_input(ctx, action_keys, gilrs);
+        self.dir_state = self.handle_key_input(ctx, direction_keys, gilrs);
 
         // Joypad IRQ gets requested when (the lower 4 bits of) JOYP changes from 0xF to anything else.
         if (self.prev_joyp & 0xF == 0xF) && (self.joyp & 0xF != 0xF) {
@@ -90,12 +102,15 @@ impl Joypad {
         ctx: &Context,
         keys: &LinkedHashMap<String, (Key, Button)>,
         gilrs: &mut Gilrs,
-    ) {
+    ) -> u8 {
+        let mut inp = 0xF;
         for (bit, (name, (key, button))) in keys.iter().enumerate() {
             if ctx.input(|i| i.key_down(*key)) || self.is_gamepad_button_down(gilrs, button, name) {
-                self.joyp &= !(0x1 << bit as u8);
+                inp &= !(0x1 << bit as u8);
             }
         }
+
+        inp
     }
 
     /// Checks if a controller button is pressed instead.

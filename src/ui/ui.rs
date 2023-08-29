@@ -742,15 +742,17 @@ impl App for Kevboy {
 impl Kevboy {
     fn run(&mut self, ctx: &Context) {
         let double_factor = if self.emulator.bus.double_speed { 2 } else { 1 };
-        while self.emulator.cycle_count < 17_556 * double_factor {
-            self.emulator.bus.joypad.tick(
-                ctx,
-                &mut self.emulator.bus.interrupt_handler,
-                &self.control_panel.action_keys,
-                &self.control_panel.direction_keys,
-                &mut self.control_panel.gilrs,
-            );
 
+        // Poll keyboard and gamepad input once per frame.
+        self.emulator.bus.joypad.tick(
+            ctx,
+            &mut self.emulator.bus.interrupt_handler,
+            &self.control_panel.action_keys,
+            &self.control_panel.direction_keys,
+            &mut self.control_panel.gilrs,
+        );
+
+        while self.emulator.cycle_count < 17_556 * double_factor {
             for _ in 0..(4 * self.fast_forward as u8) {
                 self.emulator.step();
             }
