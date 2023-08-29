@@ -38,7 +38,7 @@ impl MMIO for Joypad {
 
     fn write(&mut self, _address: u16, value: u8) {
         self.reset_pressed_keys();
-        self.joyp = 0xC0 | value | (self.joyp & 0xF); // bit 7 and 6 unused and always 1
+        self.joyp = 0xC0 | (value & 0x30) | (self.joyp & 0xF); // bit 7 and 6 unused and always 1
     }
 }
 

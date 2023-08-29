@@ -67,7 +67,7 @@ pub struct PPU {
     dots: i16,
 
     /// Current mode, based on bits 1-0 of STAT
-    current_mode: Mode,
+    pub current_mode: Mode,
     /// Stores previous STAT line to detect rising edge
     stat_block: bool,
     /// Current DMA state to properly delay DMA transfer one m-cycle
