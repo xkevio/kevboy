@@ -1,10 +1,10 @@
 use crate::{
-    apu::apu::APU,
+    apu::APU,
     cartridge::base_cartridge::Cartridge,
     cpu::interrupts::{Interrupt, InterruptHandler},
     input::joypad::Joypad,
     mmu::{mmio::MMIO, serial::Serial, timer::Timers},
-    ppu::ppu::{DMATransferState, PPU},
+    ppu::{DMATransferState, PPU},
 };
 
 use super::hdma_transfer::Hdma;

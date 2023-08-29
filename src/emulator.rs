@@ -4,8 +4,8 @@ use crate::cartridge::mbc::mbc2::MBC2;
 use crate::cartridge::mbc::mbc3::MBC3;
 use crate::cartridge::mbc::mbc5::MBC5;
 use crate::cartridge::mbc::no_mbc::NoMBC;
-use crate::cpu::cpu::CPU;
 use crate::cpu::registers::Registers;
+use crate::cpu::CPU;
 use crate::mmu::bus::Bus;
 
 pub struct Emulator {
@@ -46,8 +46,8 @@ impl Emulator {
 
         let cartridge_type = match rom[0x0147] {
             0x00 => CartridgeType::NoMBC(NoMBC::new(rom)),
-            0x01 | 0x02 | 0x03 => CartridgeType::MBC1(MBC1::new(rom, rom_size_kb, ram_size_kb)),
-            0x05 | 0x06 => CartridgeType::MBC2(MBC2::new(rom)),
+            0x01..=0x03 => CartridgeType::MBC1(MBC1::new(rom, rom_size_kb, ram_size_kb)),
+            0x05 | 0x06 => CartridgeType::MBC2(Box::new(MBC2::new(rom))),
             0x0F..=0x13 => CartridgeType::MBC3(MBC3::new(rom)),
             0x19..=0x1E => CartridgeType::MBC5(MBC5::new(rom, rom_size_kb, ram_size_kb)),
             _ => unimplemented!("Cartridge type not supported!"),

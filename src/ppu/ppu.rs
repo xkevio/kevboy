@@ -4,12 +4,17 @@ use crate::{
     cpu::interrupts::{Interrupt, InterruptHandler},
     mmu::{hdma_transfer::Hdma, mmio::MMIO},
     ppu::{
-        color_palette::*, ppu_regs::PPURegisters, sprite, sprite::Sprite,
-        tile_attributes::BgOamPrio,
+        color_palette::*,
+        ppu_regs::PPURegisters,
+        sprite::Sprite,
+        tile_attributes::{BgOamPrio, TileAttribute},
     },
 };
 
-use super::tile_attributes::TileAttribute;
+pub mod color_palette;
+pub mod ppu_regs;
+pub mod sprite;
+pub mod tile_attributes;
 
 // --------- PPU constants ---------
 pub const LCD_WIDTH: usize = 160;
@@ -397,22 +402,20 @@ impl PPU {
     pub fn dump_bg_map(&mut self, vram: &[[u8; 0x2000]]) {
         let mut current_line: Vec<(ScreenColor, BgOamPrio)> = Vec::with_capacity(256);
 
-        for i in 0..=255 {
+        for y in 0..=255 {
             let unsigned_addressing = self.regs.lcdc & 0b10000 != 0;
-
             let bg_tile_map_area =
                 if self.regs.lcdc & 0b1000 == 0 { 0x9800 - 0x8000 } else { 0x9C00 - 0x8000 };
 
-            let adjusted_y = i;
-            let tile_map_start = bg_tile_map_area + (((adjusted_y / 8) as usize) * 0x20);
+            let tile_map_start = bg_tile_map_area + (((y / 8) as usize) * 0x20);
 
             for index in tile_map_start..=(tile_map_start + 0x1F) {
-                let tile_row = self.get_tile_row(vram, unsigned_addressing, index, adjusted_y);
+                let tile_row = self.get_tile_row(vram, unsigned_addressing, index, y);
                 current_line.extend(tile_row);
             }
 
-            for x in 0..256 {
-                self.raw_frame[i as usize * 256 + x] = current_line[x].0;
+            for (x, cl) in current_line.iter().enumerate() {
+                self.raw_frame[y as usize * 256 + x] = cl.0;
             }
 
             current_line.clear();
@@ -466,11 +469,11 @@ impl PPU {
             for (j, index) in (tile_map_start..=(tile_map_start + 0x1F)).enumerate() {
                 let tile_row = self.get_tile_row(vram, unsigned_addressing, index, win_y);
 
-                for i in 0..8 {
+                for (i, tile_px) in tile_row.iter().enumerate() {
                     let signed_wx = self.regs.wx as i16;
                     let win_index = (signed_wx - 7) + i as i16 + (j as i16 * 8);
                     if (0..256).contains(&win_index) {
-                        self.current_line[win_index as usize] = tile_row[i];
+                        self.current_line[win_index as usize] = *tile_px;
                     }
                 }
             }
@@ -642,18 +645,17 @@ impl PPU {
                 &self.obj_cram,
             );
 
-            if matches!(current_color, ScreenColor::FullColor(_, 0)) {
-                return obj;
-            } else if self.regs.lcdc & 1 == 0 {
-                return obj;
-            } else if prio == BgOamPrio::OAMPrio && sprite.is_obj_prio() {
-                return obj;
+            if matches!(current_color, ScreenColor::FullColor(_, 0))
+                || (self.regs.lcdc & 1 == 0)
+                || (prio == BgOamPrio::OAMPrio && sprite.is_obj_prio())
+            {
+                obj
             } else {
-                return current_color;
+                current_color
             }
         } else {
             if sprite.is_obj_prio() {
-                return convert_to_color(index, palette, false, &self.obj_cram);
+                convert_to_color(index, palette, false, &self.obj_cram)
             } else {
                 if matches!(
                     current_color,
@@ -662,9 +664,9 @@ impl PPU {
                         | ScreenColor::Gray(0)
                         | ScreenColor::Black(0)
                 ) {
-                    return convert_to_color(index, palette, false, &self.obj_cram);
+                    convert_to_color(index, palette, false, &self.obj_cram)
                 } else {
-                    return current_color;
+                    current_color
                 }
             }
         }

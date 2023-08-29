@@ -58,23 +58,11 @@ impl MMIO for MBC5 {
     #[inline(always)]
     fn write(&mut self, address: u16, value: u8) {
         match address {
-            0x0000..=0x1FFF => {
-                // 0x0A for enable, 0x00 for disable (technically any other value)
-                if value == 0x0A {
-                    self.ram_enable = true;
-                } else {
-                    self.ram_enable = false;
-                }
-            }
-            0x2000..=0x2FFF => {
-                self.rom_bank_number = value;
-            }
-            0x3000..=0x3FFF => {
-                self.rom_bank_bit9 = value & 0x1;
-            }
-            0x4000..=0x5FFF => {
-                self.ram_bank_number = value & 0x0F;
-            }
+            // 0x0A for enable, 0x00 for disable (technically any other value)
+            0x0000..=0x1FFF => self.ram_enable = (value & 0xF) == 0xA,
+            0x2000..=0x2FFF => self.rom_bank_number = value,
+            0x3000..=0x3FFF => self.rom_bank_bit9 = value & 0x1,
+            0x4000..=0x5FFF => self.ram_bank_number = value & 0x0F,
             0xA000..=0xBFFF => {
                 if self.ram_enable {
                     let l = self.external_ram.len() - 1;

@@ -56,11 +56,7 @@ impl MMIO for MBC2 {
                 let bit8 = (address & 0x100) >> 8;
 
                 if bit8 == 0 {
-                    if (value & 0xF) == 0xA {
-                        self.ram_enable = true;
-                    } else {
-                        self.ram_enable = false;
-                    }
+                    self.ram_enable = (value & 0xF) == 0xA;
                 } else {
                     let rom_bank = value & 0xF;
                     self.rom_bank = if rom_bank == 0 { 1 } else { rom_bank };

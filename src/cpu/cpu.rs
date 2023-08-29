@@ -3,6 +3,10 @@ use crate::{
     mmu::{bus::Bus, mmio::MMIO},
 };
 
+pub mod debug;
+pub mod interrupts;
+pub mod registers;
+
 macro_rules! reg8 {
     ($self:ident, $bits:expr, $bus:ident) => {
         match $bits {
@@ -674,15 +678,13 @@ impl CPU {
                     return true;
                 }
             }
-
-            return false;
         } else {
             if bus.interrupt_handler.inte & bus.interrupt_handler.intf & 0x1F != 0 {
                 self.halt = false;
             }
-
-            return false;
         }
+
+        false
     }
 
     // ------------------------------

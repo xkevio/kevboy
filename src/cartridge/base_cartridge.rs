@@ -10,7 +10,7 @@ use crate::mmu::mmio::MMIO;
 pub enum CartridgeType {
     NoMBC(NoMBC),
     MBC1(MBC1),
-    MBC2(MBC2),
+    MBC2(Box<MBC2>),
     MBC3(MBC3),
     MBC5(MBC5),
 }

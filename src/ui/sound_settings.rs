@@ -1,7 +1,7 @@
 use eframe::CreationContext;
 use egui::{RichText, Slider, Ui};
 
-use crate::apu::apu::APU;
+use crate::apu::APU;
 
 pub struct SoundSettings {
     pub open: bool,

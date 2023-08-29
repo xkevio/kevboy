@@ -872,7 +872,7 @@ impl APU {
         let out = in_sample - self.capacitor;
         self.capacitor = in_sample - out * 0.996;
 
-        return out;
+        out
     }
 
     // -------- CHANNEL STATUS --------

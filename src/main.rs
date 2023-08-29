@@ -1,19 +1,25 @@
 #![allow(dead_code)]
+#![allow(clippy::collapsible_if)]
+#![allow(clippy::collapsible_else_if)]
 #![windows_subsystem = "windows"]
 
 use anyhow::Result;
 use eframe::IconData;
 use egui::FontDefinitions;
 use image::{codecs::png::PngDecoder, DynamicImage};
-use ui::ui::Kevboy;
+use ui::Kevboy;
 
+#[path = "apu/apu.rs"]
 mod apu;
 mod cartridge;
+#[path = "cpu/cpu.rs"]
 mod cpu;
 mod emulator;
 mod input;
 mod mmu;
+#[path = "ppu/ppu.rs"]
 mod ppu;
+#[path = "ui/ui.rs"]
 mod ui;
 
 fn main() -> Result<()> {

@@ -19,20 +19,26 @@ use hashlink::LinkedHashSet;
 
 use crate::{
     cpu::registers::Flag,
+    emulator::Emulator,
     ppu::{
-        color_palette::{Chocolate, Green, Monochrome, ScreenColor},
-        ppu::{LCD_HEIGHT, LCD_WIDTH},
+        color_palette::{Chocolate, Green, Monochrome, ScreenColor, COLOR_CORRECTION},
+        LCD_HEIGHT, LCD_WIDTH,
     },
-    ui::memory_viewer::MemoryViewer,
 };
-use crate::{emulator::Emulator, ppu::color_palette::COLOR_CORRECTION};
 
-use super::{
+use self::{
     control_panel::ControlPanel,
+    frame_history::FrameHistory,
+    memory_viewer::MemoryViewer,
     palette_picker::{Palette, PalettePicker},
     sound_settings::SoundSettings,
 };
-use crate::ui::frame_history::FrameHistory;
+
+pub mod control_panel;
+pub mod frame_history;
+pub mod memory_viewer;
+pub mod palette_picker;
+pub mod sound_settings;
 
 /// Shortcut for adding phosphor icons infront of text.
 macro_rules! icon_text {
@@ -111,12 +117,12 @@ impl Kevboy {
     /// For starting the emulator from the command line
     pub fn with_rom(rom: &[u8], cc: &CreationContext) -> Self {
         let mut emulator = Emulator::new();
-        emulator.load_rom(rom);
-
         let mut kevboy = Self::new(cc);
+
+        emulator.load_rom(rom);
         kevboy.emulator = emulator;
 
-        return kevboy;
+        kevboy
     }
 }
 

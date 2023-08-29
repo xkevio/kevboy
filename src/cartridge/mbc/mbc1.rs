@@ -73,13 +73,7 @@ impl MMIO for MBC1 {
     #[inline(always)]
     fn write(&mut self, address: u16, value: u8) {
         match address {
-            0x0000..=0x1FFF => {
-                if value & 0xF == 0xA {
-                    self.ram_enable = true;
-                } else {
-                    self.ram_enable = false;
-                }
-            }
+            0x0000..=0x1FFF => self.ram_enable = (value & 0xF) == 0xA,
             0x2000..=0x3FFF => {
                 let rom_bank = if value & 0x1F == 0 { 1 } else { value & 0x1F };
                 let max_banks_bits = self.rom_size / 16;

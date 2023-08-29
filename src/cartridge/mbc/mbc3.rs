@@ -94,16 +94,8 @@ impl MMIO for MBC3 {
     #[inline(always)]
     fn write(&mut self, address: u16, value: u8) {
         match address {
-            0x0000..=0x1FFF => {
-                if value == 0x0A {
-                    self.ram_timer_enable = true;
-                } else {
-                    self.ram_timer_enable = false;
-                }
-            }
-            0x2000..=0x3FFF => {
-                self.rom_bank_number = value & 0x7F;
-            }
+            0x0000..=0x1FFF => self.ram_timer_enable = (value & 0xF) == 0xA,
+            0x2000..=0x3FFF => self.rom_bank_number = value & 0x7F,
             0x4000..=0x5FFF => {
                 // 0x00 - 0x03 -> RAM, 0x08 - 0x0C -> RTC
                 self.ram_bank_rtc = value;
