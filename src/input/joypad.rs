@@ -43,13 +43,11 @@ impl Default for Joypad {
 
 impl MMIO for Joypad {
     fn read(&mut self, _address: u16) -> u8 {
-        self.joyp = match self.get_button_type() {
+        match self.get_button_type() {
             ButtonType::Action => 0xC0 | (self.joyp & 0x30) | self.action_state,
             ButtonType::Direction => 0xC0 | (self.joyp & 0x30) | self.dir_state,
             _ => 0xCF,
-        };
-
-        self.joyp
+        }
     }
 
     fn write(&mut self, _address: u16, value: u8) {
@@ -72,11 +70,11 @@ impl Joypad {
         self.dir_state = self.handle_key_input(ctx, direction_keys, gilrs);
 
         // Joypad IRQ gets requested when (the lower 4 bits of) JOYP changes from 0xF to anything else.
-        if (self.prev_joyp & 0xF == 0xF) && (self.joyp & 0xF != 0xF) {
+        if (self.prev_joyp & 0xF == 0xF) && (self.read(0) & 0xF != 0xF) {
             interrupt_handler.request_interrupt(Interrupt::Joypad);
         }
 
-        self.prev_joyp = self.joyp;
+        self.prev_joyp = self.read(0);
     }
 
     /// Set all 4 key bits to 1 as that stands for "not pressed".
