@@ -6,9 +6,9 @@ pub struct Sprite {
     attr: u8,
 }
 
-// oam $FE00-$FE9F
-// 10 sprites per scanline
-// x coord and oam in dmg, just oam in cgb
+/// OAM goes from: $FE00-$FE9F.
+/// We have 10 sprites per scanline and sort by x-coordinates
+/// and OAM order in DMG or just order in CGB.
 pub fn get_current_sprites_per_line(
     oam: &[u8],
     ly: u8,
