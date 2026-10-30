@@ -34,9 +34,10 @@ fn main() -> Result<()> {
         "Kevboy",
         native_options,
         Box::new(|cc| {
-            // let mut fonts = FontDefinitions::default();
-            // egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
-            // cc.egui_ctx.set_fonts(fonts);
+            let mut fonts = FontDefinitions::default();
+            egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+            cc.egui_ctx.set_fonts(fonts);
+
             install_image_loaders(&cc.egui_ctx);
 
             // Read in rom per command line

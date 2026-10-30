@@ -1,7 +1,7 @@
 use std::num::NonZero;
 
 use crate::mmu::mmio::MMIO;
-use rodio::{Player, buffer::SamplesBuffer, queue::SourcesQueueOutput};
+use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player, buffer::SamplesBuffer};
 
 // WAVE DUTY CYCLES
 const WAVE_DUTY_CYCLES: [[u8; 8]; 4] = [
@@ -570,12 +570,9 @@ pub struct APU {
     /// Buffer that holds the sound samples before being queued into the audio queue
     buffer: Vec<f32>,
 
+    /// Queue to append samples to, never stops playing
     pub player: Player,
-    source_queue_output: SourcesQueueOutput,
-    // /// Queue to append samples to, never stops playing
-    // pub sink: Sink,
-    // /// Rodio frontend streams to play sound
-    // streams: (OutputStream, OutputStreamHandle),
+    device_sink: MixerDeviceSink,
     /// Fast-forward the APU
     pub speed: bool,
     /// Frontend communication for enabling/disabling individual channels
@@ -586,7 +583,9 @@ pub struct APU {
 
 impl Default for APU {
     fn default() -> Self {
-        let (player, source_queue_output) = Player::new();
+        let device_sink =
+            DeviceSinkBuilder::open_default_sink().expect("audio stream should be available");
+        let player = Player::connect_new(device_sink.mixer());
 
         Self {
             wave_ram: [0xFF; 0x10],
@@ -607,7 +606,7 @@ impl Default for APU {
             buffer: Vec::with_capacity(1024),
 
             player,
-            source_queue_output,
+            device_sink,
             speed: false,
             ch_enable: (true, true, true, true),
 
@@ -829,9 +828,9 @@ impl APU {
 
             self.buffer.extend([ls, rs]);
 
-            // len() of sink does not return amount of samples but amount of SamplesBuffer, hence 1 SamplesBuffer = 1024 sample
+            // NOTE: len() of player does not return amount of samples but amount of SamplesBuffer, hence 1 SamplesBuffer = 1024 samples.
             if self.buffer.len() >= 1024 {
-                while self.player.len() > 2 {}
+                while self.player.len() > 4 {} 
                 self.player.append(SamplesBuffer::new(NonZero::new(2).unwrap(), NonZero::new(48000).unwrap(), self.buffer.clone()));
                 self.buffer.clear();
             }

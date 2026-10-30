@@ -13,11 +13,10 @@ codegen-units = 1
 anyhow = "1.0.104"
 eframe = {version = "0.37.0", features = ["persistence"] }
 egui = { version = "0.37.0", features = ["serde"] }
-egui-phosphor = "0.14"
+egui-phosphor = { git = "https://github.com/xkevio/egui-phosphor.git" }
 egui_extras = { version = "0.37.0", features = ["all_loaders"] }
 gilrs = { version = "0.11.2", features = ["serde-serialize"] }
 hashlink = { version = "0.12.2", features = ["serde", "serde_impl"] }
-image = "0.25.10"
 rfd = "0.17.2"
-rodio = { version = "0.23.0", default-features = false }
+rodio = { version = "0.23.0", default-features = false, features = ["playback"] }
 serde = "1.0.229"
