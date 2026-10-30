@@ -1,6 +1,6 @@
 use eframe::{
-    egui::{Context, Grid, Key, Separator, TextEdit, Ui},
     CreationContext,
+    egui::{Context, Grid, Key, Separator, TextEdit, Ui},
 };
 use egui::{Button, Frame};
 use gilrs::{Button as CButton, Gilrs};
@@ -70,7 +70,7 @@ impl ControlPanel {
         ui.horizontal(|ui| {
             ui.add_space(ui.available_width() / 7.0);
 
-            Frame::none().show(ui, |ui| {
+            Frame::default().show(ui, |ui| {
                 ui.vertical(|ui| {
                     ui.heading("Direction");
                     Grid::new("direction").num_columns(2).show(ui, |ui| {
@@ -98,7 +98,7 @@ impl ControlPanel {
 
             ui.add(Separator::default().vertical());
 
-            Frame::none().show(ui, |ui| {
+            Frame::default().show(ui, |ui| {
                 ui.vertical(|ui| {
                     ui.heading("Action");
                     Grid::new("action").num_columns(2).show(ui, |ui| {

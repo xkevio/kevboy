@@ -4,9 +4,9 @@
 #![windows_subsystem = "windows"]
 
 use anyhow::Result;
-use eframe::IconData;
-use egui::FontDefinitions;
-use image::{codecs::png::PngDecoder, DynamicImage};
+use eframe::icon_data::from_png_bytes;
+use egui::{FontDefinitions, ViewportBuilder};
+use egui_extras::install_image_loaders;
 use ui::Kevboy;
 
 #[path = "apu/apu.rs"]
@@ -23,17 +23,10 @@ mod ppu;
 mod ui;
 
 fn main() -> Result<()> {
-    let icon = include_bytes!("../icon/icon.png");
-    let icon_data = DynamicImage::from_decoder(PngDecoder::new(&icon[..])?)?;
-
+    let icon_data = from_png_bytes(include_bytes!("../icon/icon.png"))?;
     let native_options = eframe::NativeOptions {
-        vsync: false,
+        viewport: ViewportBuilder::default().with_icon(icon_data),
         centered: true,
-        icon_data: Some(IconData {
-            rgba: icon_data.as_bytes().to_vec(),
-            width: 256,
-            height: 256,
-        }),
         ..Default::default()
     };
 
@@ -41,16 +34,18 @@ fn main() -> Result<()> {
         "Kevboy",
         native_options,
         Box::new(|cc| {
-            let mut fonts = FontDefinitions::default();
-            egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
-            cc.egui_ctx.set_fonts(fonts);
+            // let mut fonts = FontDefinitions::default();
+            // egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+            // cc.egui_ctx.set_fonts(fonts);
+            install_image_loaders(&cc.egui_ctx);
 
             // Read in rom per command line
             let kevboy = match std::env::args().nth(1) {
                 Some(rom) => Kevboy::with_rom(&std::fs::read(rom).unwrap(), cc),
                 None => Kevboy::new(cc),
             };
-            Box::new(kevboy)
+
+            Ok(Box::new(kevboy))
         }),
     )
     .map_err(|e| anyhow::anyhow!(e.to_string()))

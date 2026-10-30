@@ -1,8 +1,8 @@
 use crate::ppu::color_palette::{Chocolate, Green, Monochrome};
 use eframe::{
+    CreationContext,
     egui::{Grid, Ui},
     epaint::Color32,
-    CreationContext,
 };
 use hashlink::LinkedHashMap;
 

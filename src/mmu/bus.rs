@@ -203,9 +203,10 @@ impl Bus {
         }
 
         // TODO: Clock in T-cycles or M-cycles?
-        for _ in 0..((cycles_passed * 4) / double_factor) {
-            self.apu.tick((self.timer.div >> 8) as u8);
-        }
+        // FIXME: New rodio API makes this awfully slow!
+        // for _ in 0..((cycles_passed * 4) / double_factor) {
+        //     self.apu.tick((self.timer.div >> 8) as u8);
+        // }
 
         self.serial.tick(
             &mut self.interrupt_handler,

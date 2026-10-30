@@ -1,6 +1,6 @@
 use eframe::{
-    egui::{util::History, Context},
     Frame,
+    egui::{Context, util::History},
 };
 
 pub struct FrameHistory {

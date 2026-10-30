@@ -6,23 +6,25 @@ use std::{
 };
 
 use eframe::{
+    App, CreationContext, Frame, Storage,
     egui::{
-        menu, Button, CentralPanel, CollapsingHeader, Context, Key, KeyboardShortcut, Modifiers,
-        RichText, TextureOptions, TopBottomPanel, Window,
+        Button, CentralPanel, CollapsingHeader, Context, Key, KeyboardShortcut, Modifiers,
+        RichText, TextureOptions, Window,
     },
     epaint::{Color32, ColorImage},
-    App, CreationContext, Frame, Storage,
 };
-use egui::{Grid, Rgba, ScrollArea, SelectableLabel, SidePanel, TextureHandle, Vec2};
-use egui_extras::RetainedImage;
+use egui::{
+    Grid, Id, Image, MenuBar, Panel, Rgba, ScrollArea, TextureHandle, Ui, ViewportCommand,
+    include_image,
+};
 use hashlink::LinkedHashSet;
 
 use crate::{
     cpu::registers::Flag,
     emulator::Emulator,
     ppu::{
-        color_palette::{Chocolate, Green, Monochrome, ScreenColor, COLOR_CORRECTION},
         LCD_HEIGHT, LCD_WIDTH,
+        color_palette::{COLOR_CORRECTION, Chocolate, Green, Monochrome, ScreenColor},
     },
 };
 
@@ -61,8 +63,6 @@ pub struct Kevboy {
     control_panel: ControlPanel,
     palette_picker: PalettePicker,
     sound_settings: SoundSettings,
-    github_img: RetainedImage,
-
     recent_roms: LinkedHashSet<PathBuf>,
     is_vram_window_open: bool,
 
@@ -94,12 +94,6 @@ impl Kevboy {
             control_panel: ControlPanel::new(cc),
             palette_picker: PalettePicker::new(cc),
             sound_settings: SoundSettings::new(cc),
-            github_img: RetainedImage::from_svg_bytes(
-                "gh",
-                include_bytes!("../../icon/github-mark-white.svg"),
-            )
-            .unwrap(),
-
             recent_roms: eframe::get_value(cc.storage.unwrap(), "recent_roms").unwrap_or_default(),
             is_vram_window_open: false,
 
@@ -138,21 +132,19 @@ impl App for Kevboy {
     }
 
     /// UI declarations and functionality, called every frame and also runs the emulator
-    fn update(&mut self, ctx: &Context, frame: &mut Frame) {
-        self.history.update(ctx, frame);
+    fn ui(&mut self, ui: &mut Ui, frame: &mut Frame) {
+        let ctx = ui.ctx().clone();
+        self.history.update(&ctx, frame);
 
         if let Some(tex) = &mut self.texture {
             tex.set(
-                ColorImage {
-                    size: [LCD_WIDTH, LCD_HEIGHT],
-                    pixels: self.frame_buffer.clone(),
-                },
+                ColorImage::new([LCD_WIDTH, LCD_HEIGHT], self.frame_buffer.clone()),
                 TextureOptions::NEAREST,
             );
         } else {
             self.texture = Some(ctx.load_texture(
                 "fb",
-                ColorImage::new([LCD_WIDTH, LCD_HEIGHT], Green::WHITE),
+                ColorImage::filled([LCD_WIDTH, LCD_HEIGHT], Green::WHITE),
                 TextureOptions::NEAREST,
             ));
         }
@@ -163,20 +155,19 @@ impl App for Kevboy {
             let first_rom = dropped_files
                 .iter()
                 .find(|file| {
-                    file.path.as_ref().is_some_and(|p| {
-                        let extension = p.extension().unwrap();
-                        extension == "gb" || extension == "gbc"
-                    })
+                    let extension = file.path().extension().unwrap();
+                    extension == "gb" || extension == "gbc"
                 })
                 .cloned();
 
             if let Some(file) = first_rom {
-                let rom = fs::read(file.path.as_ref().unwrap()).unwrap();
+                let rom = fs::read(file.path()).unwrap();
 
-                frame.set_window_title(&format!(
+                ctx.send_viewport_cmd(ViewportCommand::Title(format!(
                     "Kevboy - {:#?}",
-                    file.path.unwrap().file_name().unwrap().to_str().unwrap()
-                ));
+                    file.path().file_name().unwrap().to_str().unwrap()
+                )));
+
                 self.emulator.load_rom(&rom);
                 self.mem_viewer = MemoryViewer::new_with_memory(&rom, true);
             }
@@ -186,8 +177,8 @@ impl App for Kevboy {
         //      Start of UI declarations
         // ----------------------------------
 
-        TopBottomPanel::top("menu").show(ctx, |root| {
-            menu::bar(root, |ui| {
+        Panel::top("menu").show(ui, |root| {
+            MenuBar::new().ui(root, |ui| {
                 ui.menu_button("File", |ui| {
                     // Opens File Dialog filtered for the most common extensions.
                     // Inserts path into `recent_roms` and saves it into local storage.
@@ -209,12 +200,15 @@ impl App for Kevboy {
                                 storage.flush();
                             }
 
-                            frame.set_window_title(&format!("Kevboy - {:#?}", path.file_name().unwrap().to_str().unwrap()));
+                            ui.send_viewport_cmd(ViewportCommand::Title(
+                                format!("Kevboy - {:#?}", path.file_name().unwrap().to_str().unwrap()))
+                            );
+
                             self.emulator.load_rom(&rom);
                             self.mem_viewer = MemoryViewer::new_with_memory(&rom, true);
                         }
 
-                        ui.close_menu();
+                        ui.close();
                     }
 
                     // Iterates through a copy of `recent_roms` and generates menu buttons from it
@@ -226,11 +220,14 @@ impl App for Kevboy {
                                 let rom = fs::read(rom_path).expect("ROM wasn't loaded correctly!");
                                 self.recent_roms.to_back(rom_path);
 
-                                frame.set_window_title(&format!("Kevboy - {:#?}", rom_path.file_name().unwrap().to_str().unwrap()));
+                                ui.send_viewport_cmd(ViewportCommand::Title(
+                                    format!("Kevboy - {:#?}", rom_path.file_name().unwrap().to_str().unwrap()))
+                                );
+
                                 self.emulator.load_rom(&rom);
                                 self.mem_viewer = MemoryViewer::new_with_memory(&rom, true);
 
-                                ui.close_menu();
+                                ui.close();
                             }
                         }
                     });
@@ -244,7 +241,7 @@ impl App for Kevboy {
                         .add_enabled(
                             !self.emulator.rom.is_empty(),
                             Button::new(icon_text!(UPLOAD_SIMPLE, "Load Save")).shortcut_text(
-                                ctx.format_shortcut(&KeyboardShortcut::new(
+                                ui.format_shortcut(&KeyboardShortcut::new(
                                     Modifiers::CTRL,
                                     Key::L,
                                 )),
@@ -270,7 +267,7 @@ impl App for Kevboy {
                         .add_enabled(
                             !self.emulator.rom.is_empty(),
                             Button::new(icon_text!(DOWNLOAD_SIMPLE, "Store Save")).shortcut_text(
-                                ctx.format_shortcut(&KeyboardShortcut::new(
+                                ui.format_shortcut(&KeyboardShortcut::new(
                                     Modifiers::CTRL,
                                     Key::S,
                                 )),
@@ -357,7 +354,7 @@ impl App for Kevboy {
 
         // Optional information about register state, cartridge type and an "About" section
         // Can be expanded via the "R" button
-        SidePanel::right("rp").resizable(false).show_animated(ctx, self.right, |ui| {
+        Panel::right("rp").resizable(false).show_collapsible(ui, &mut self.right, |ui| {
             ScrollArea::new([false, true]).show(ui, |ui| {
                 ui.vertical(|ui| {
                     ui.add_space(10.0);
@@ -463,7 +460,7 @@ impl App for Kevboy {
                         });
 
                         ui.horizontal(|ui| {
-                            ui.image(self.github_img.texture_id(ctx), Vec2::splat(20.0));
+                            ui.image(include_image!("../../icon/github-mark-white.svg"));
                             ui.hyperlink("https://github.com/xkevio/kevboy");
                         });
 
@@ -474,7 +471,7 @@ impl App for Kevboy {
         });
 
         // This panel holds both the game screen and the button group for resuming, pausing or stopping emulation
-        CentralPanel::default().show(ctx, |ui| {
+        CentralPanel::default().show(ui, |ui| {
             ui.vertical(|ui| {
                 ui.add_space(20.0);
                 ui.vertical_centered(|ui| {
@@ -497,7 +494,7 @@ impl App for Kevboy {
                                     self.pause = !self.pause;
                                 }
 
-                                if ui.add_sized([25.0, 25.0], SelectableLabel::new(self.fast_forward, RichText::new("⏩").size(15.0)))
+                                if ui.add_sized([25.0, 25.0], Button::selectable(self.fast_forward, RichText::new("⏩").size(15.0)))
                                     .on_hover_text("Fast forward (5x)")
                                     .clicked()
                                 {
@@ -507,7 +504,7 @@ impl App for Kevboy {
 
                                 ui.separator();
 
-                                if ui.add_sized([25.0, 25.0], SelectableLabel::new(self.right, RichText::new("R").size(15.0)))
+                                if ui.add_sized([25.0, 25.0], Button::selectable(self.right, RichText::new("R").size(15.0)))
                                     .on_hover_text("Show right sidebar displaying extra information about registers,\nthe cartridge and an about section")
                                     .clicked()
                                 {
@@ -531,7 +528,7 @@ impl App for Kevboy {
                             (true, sc) => sc as f32,
                         };
 
-                        ui.image(tex.id(), tex.size_vec2() * scale);
+                        ui.add(Image::new(tex).fit_to_exact_size(tex.size_vec2() * scale));
                     }
                 });
             });
@@ -547,8 +544,8 @@ impl App for Kevboy {
             Window::new("⌨ Controls")
                 .open(&mut control_panel_open)
                 .resizable(false)
-                .show(ctx, |ui| {
-                    self.control_panel.show(ctx, ui, frame);
+                .show(ui, |ui| {
+                    self.control_panel.show(&ctx, ui, frame);
                 });
             self.control_panel.open &= control_panel_open;
         }
@@ -559,7 +556,7 @@ impl App for Kevboy {
             Window::new("🔊 Volume")
                 .open(&mut sound_settings)
                 .resizable(false)
-                .show(ctx, |ui| {
+                .show(ui, |ui| {
                     self.sound_settings
                         .show(ui, frame, &mut self.emulator.bus.apu);
                 });
@@ -572,7 +569,7 @@ impl App for Kevboy {
             Window::new("🎨 Palettes")
                 .open(&mut palette_window_open)
                 .resizable(false)
-                .show(ctx, |ui| {
+                .show(ui, |ui| {
                     self.palette_picker.show(ui, frame);
                 });
             self.palette_picker.open &= palette_window_open;
@@ -582,7 +579,7 @@ impl App for Kevboy {
             let mut mem_viewer_open = self.mem_viewer.open;
             Window::new("💾 Memory")
                 .open(&mut mem_viewer_open)
-                .show(ctx, |ui| {
+                .show(ui, |ui| {
                     self.mem_viewer.show(ui);
                 });
             self.mem_viewer.open = mem_viewer_open;
@@ -591,7 +588,7 @@ impl App for Kevboy {
         if self.is_vram_window_open {
             Window::new("🖼 BG Map")
                 .open(&mut self.is_vram_window_open)
-                .show(ctx, |ui| {
+                .show(ui, |ui| {
                     self.emulator.bus.ppu.dump_bg_map(&self.emulator.bus.vram);
 
                     let pixels: Vec<Color32> = self
@@ -609,28 +606,26 @@ impl App for Kevboy {
                         })
                         .collect();
 
-                    let image = RetainedImage::from_color_image(
+                    let vram_tex = ui.ctx().load_texture_cached(
                         "vram",
-                        ColorImage {
-                            size: [256, 256],
-                            pixels,
-                        },
-                    )
-                    .with_options(TextureOptions::NEAREST);
+                        Id::unique("vram"),
+                        ColorImage::new([256, 256], pixels),
+                        TextureOptions::NEAREST,
+                    );
 
-                    image.show_size(ui, ui.available_size());
+                    ui.add_sized(ui.available_size(), Image::new(&vram_tex));
                 });
 
             Window::new("💾 VRAM:0")
                 .open(&mut self.is_vram_window_open)
-                .show(ctx, |ui| {
+                .show(ui, |ui| {
                     let mut mem = MemoryViewer::new_with_memory(&self.emulator.bus.vram[0], false);
                     mem.show(ui);
                 });
 
             Window::new("💾 VRAM:1")
                 .open(&mut self.is_vram_window_open)
-                .show(ctx, |ui| {
+                .show(ui, |ui| {
                     let mut mem = MemoryViewer::new_with_memory(&self.emulator.bus.vram[1], false);
                     mem.show(ui);
                 });
@@ -641,8 +636,8 @@ impl App for Kevboy {
         // ----------------------------------
 
         if !self.emulator.rom.is_empty() && !self.pause {
-            self.run(ctx);
-            ctx.request_repaint();
+            self.run(ui);
+            ui.request_repaint();
         }
     }
 }
@@ -672,7 +667,7 @@ impl Kevboy {
         self.emulator
             .bus
             .apu
-            .sink
+            .player
             .set_volume(self.sound_settings.volume / 100.0);
 
         // Normal frame buffer for frontend, gets swapped for double buffering

@@ -4,8 +4,8 @@ use crate::cartridge::mbc::mbc2::MBC2;
 use crate::cartridge::mbc::mbc3::MBC3;
 use crate::cartridge::mbc::mbc5::MBC5;
 use crate::cartridge::mbc::no_mbc::NoMBC;
-use crate::cpu::registers::Registers;
 use crate::cpu::CPU;
+use crate::cpu::registers::Registers;
 use crate::mmu::bus::Bus;
 
 pub struct Emulator {

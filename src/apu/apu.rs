@@ -1,5 +1,7 @@
+use std::num::NonZero;
+
 use crate::mmu::mmio::MMIO;
-use rodio::{buffer::SamplesBuffer, OutputStream, OutputStreamHandle, Sink};
+use rodio::{Player, buffer::SamplesBuffer, queue::SourcesQueueOutput};
 
 // WAVE DUTY CYCLES
 const WAVE_DUTY_CYCLES: [[u8; 8]; 4] = [
@@ -136,11 +138,7 @@ impl ChannelOne {
         let sample = WAVE_DUTY_CYCLES[((self.nr11 & 0xC0) >> 6) as usize][self.duty_cycle as usize]
             * self.volume;
 
-        if self.is_dac_on() {
-            (sample as f32 / 7.5) - 1.0
-        } else {
-            0.0
-        }
+        if self.is_dac_on() { (sample as f32 / 7.5) - 1.0 } else { 0.0 }
     }
 
     pub fn clear(&mut self) {
@@ -266,11 +264,7 @@ impl ChannelTwo {
         let sample = WAVE_DUTY_CYCLES[((self.nr21 & 0xC0) >> 6) as usize][self.duty_cycle as usize]
             * self.volume;
 
-        if self.is_dac_on() {
-            (sample as f32 / 7.5) - 1.0
-        } else {
-            0.0
-        }
+        if self.is_dac_on() { (sample as f32 / 7.5) - 1.0 } else { 0.0 }
     }
 
     pub fn clear(&mut self) {
@@ -374,11 +368,7 @@ impl ChannelThree {
             _ => unreachable!(),
         };
 
-        if self.is_dac_on() {
-            (sample as f32 / 7.5) - 1.0
-        } else {
-            0.0
-        }
+        if self.is_dac_on() { (sample as f32 / 7.5) - 1.0 } else { 0.0 }
     }
 
     pub fn clear(&mut self) {
@@ -508,11 +498,7 @@ impl ChannelFour {
     pub fn sample(&self) -> f32 {
         let sample = (!(self.lfsr as u8) & 1) * self.volume;
 
-        if self.is_dac_on() {
-            (sample as f32 / 7.5) - 1.0
-        } else {
-            0.0
-        }
+        if self.is_dac_on() { (sample as f32 / 7.5) - 1.0 } else { 0.0 }
     }
 
     pub fn clear(&mut self) {
@@ -584,10 +570,12 @@ pub struct APU {
     /// Buffer that holds the sound samples before being queued into the audio queue
     buffer: Vec<f32>,
 
-    /// Queue to append samples to, never stops playing
-    pub sink: Sink,
-    /// Rodio frontend streams to play sound
-    streams: (OutputStream, OutputStreamHandle),
+    pub player: Player,
+    source_queue_output: SourcesQueueOutput,
+    // /// Queue to append samples to, never stops playing
+    // pub sink: Sink,
+    // /// Rodio frontend streams to play sound
+    // streams: (OutputStream, OutputStreamHandle),
     /// Fast-forward the APU
     pub speed: bool,
     /// Frontend communication for enabling/disabling individual channels
@@ -598,8 +586,7 @@ pub struct APU {
 
 impl Default for APU {
     fn default() -> Self {
-        let streams = OutputStream::try_default().unwrap();
-        let sink = Sink::try_new(&streams.1).unwrap();
+        let (player, source_queue_output) = Player::new();
 
         Self {
             wave_ram: [0xFF; 0x10],
@@ -619,8 +606,8 @@ impl Default for APU {
 
             buffer: Vec::with_capacity(1024),
 
-            sink,
-            streams,
+            player,
+            source_queue_output,
             speed: false,
             ch_enable: (true, true, true, true),
 
@@ -844,8 +831,8 @@ impl APU {
 
             // len() of sink does not return amount of samples but amount of SamplesBuffer, hence 1 SamplesBuffer = 1024 sample
             if self.buffer.len() >= 1024 {
-                while self.sink.len() > 2 {}
-                self.sink.append(SamplesBuffer::new(2, 48000, self.buffer.clone()));
+                while self.player.len() > 2 {}
+                self.player.append(SamplesBuffer::new(NonZero::new(2).unwrap(), NonZero::new(48000).unwrap(), self.buffer.clone()));
                 self.buffer.clear();
             }
         }

@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use eframe::egui::{Context, Key};
-use gilrs::{ev::filter::Repeat, Axis, Button, Event, EventType, Filter, Gilrs};
+use gilrs::{Axis, Button, Event, EventType, Filter, Gilrs, ev::filter::Repeat};
 use hashlink::LinkedHashMap;
 
 use crate::{
