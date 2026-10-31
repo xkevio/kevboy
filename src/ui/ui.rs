@@ -44,6 +44,9 @@ pub mod sound_settings;
 
 /// Shortcut for adding phosphor icons infront of text.
 macro_rules! icon_text {
+    ($icon:ident) => {
+        format!("{}", egui_phosphor::regular::$icon)
+    };
     ($icon:ident, $text:expr) => {
         format!("{} {}", egui_phosphor::regular::$icon, $text)
     };
@@ -479,7 +482,7 @@ impl App for Kevboy {
                     self.playback_button_width = ui
                         .group(|ui| {
                             ui.horizontal(|ui| {
-                                if ui.add_sized([25.0, 25.0], Button::new(RichText::new("⏹").size(15.0)))
+                                if ui.add_sized([25.0, 25.0], Button::new(icon_text!(STOP)))
                                     .on_hover_text("Stop the emulation and reset the emulator state")
                                     .clicked()
                                 {
@@ -487,14 +490,14 @@ impl App for Kevboy {
                                     self.frame_buffer.fill(Green::WHITE);
                                 }
 
-                                if ui.add_sized([25.0, 25.0], Button::new(if !self.pause { RichText::new("⏸").size(15.0) } else { RichText::new("▶").size(15.0) }))
+                                if ui.add_sized([25.0, 25.0], Button::new(if !self.pause { icon_text!(PAUSE) } else { icon_text!(PLAY) }))
                                     .on_hover_text("Pause / Resume the emulation")
                                     .clicked()
                                 {
                                     self.pause = !self.pause;
                                 }
 
-                                if ui.add_sized([25.0, 25.0], Button::selectable(self.fast_forward, RichText::new("⏩").size(15.0)))
+                                if ui.add_sized([25.0, 25.0], Button::selectable(self.fast_forward, icon_text!(FAST_FORWARD)))
                                     .on_hover_text("Fast forward (5x)")
                                     .clicked()
                                 {
@@ -606,7 +609,7 @@ impl App for Kevboy {
                         })
                         .collect();
 
-                    let vram_tex = ui.ctx().load_texture_cached(
+                    let vram_tex = ctx.load_texture_cached(
                         "vram",
                         Id::unique("vram"),
                         ColorImage::new([256, 256], pixels),
