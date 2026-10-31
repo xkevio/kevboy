@@ -1,4 +1,4 @@
-# WIP Game Boy & Game Boy Color Emulator
+# Game Boy & Game Boy Color Emulator
 
 <p float="left" align="middle">
 <img src="icon/crystal.png" alt="Pokemon Crystal Title Screen" width="450" />
