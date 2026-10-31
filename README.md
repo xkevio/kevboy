@@ -17,6 +17,10 @@ Our CI workflow currently produces binaries for:
 - Ubuntu 64-bit (`x86_64-unknown-linux-gnu`)
 - Mac OS x86 (`x86_64-apple-darwin`)
 
+#### Semi-Automatic
+
+- Install via `cargo install`: `cargo install --git https://github.com/xkevio/kevboy --locked`
+
 #### Manual:
 
 - Clone with `git@github.com:xkevio/kevboy.git`
